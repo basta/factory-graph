@@ -1,5 +1,4 @@
-import ELK from 'elkjs/lib/elk.bundled.js';
-import type { ElkNode } from 'elkjs/lib/elk-api';
+import type { ELK, ElkNode } from 'elkjs/lib/elk-api';
 import type { GameIndex } from '../data/loader.ts';
 import { nodeShape } from '../canvas/geometry.ts';
 import type { Graph, Position } from './types.ts';
@@ -14,8 +13,20 @@ import type { Graph, Position } from './types.ts';
  * user-invoked action rather than something that happens while typing, so a
  * few hundred milliseconds on a large graph is acceptable; a worker would buy
  * responsiveness we do not need here and cost a second bundle.
+ *
+ * ELK is 1.4 MB — three times the rest of the app — for something most sessions
+ * press once or never. It is loaded on first use instead of at startup, and the
+ * instance is kept so the second layout is immediate.
  */
-const elk = new ELK();
+let elk: ELK | null = null;
+
+async function getElk(): Promise<ELK> {
+  if (!elk) {
+    const { default: ElkConstructor } = await import('elkjs/lib/elk.bundled.js');
+    elk = new ElkConstructor();
+  }
+  return elk;
+}
 
 const OPTIONS: Record<string, string> = {
   'elk.algorithm': 'layered',
@@ -55,7 +66,7 @@ export async function autoLayout(
     .filter((edge) => edge.from !== edge.to)
     .map((edge) => ({ id: edge.id, sources: [edge.from], targets: [edge.to] }));
 
-  const laid = await elk.layout({
+  const laid = await (await getElk()).layout({
     id: 'root',
     layoutOptions: OPTIONS,
     children,

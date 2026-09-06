@@ -359,6 +359,14 @@ by the smallest amount that brings the node back, and only when it is actually
 clipped — so it never drags the view out from under someone who can already see
 what they selected.
 
+### Bundle
+
+Adding ELK took the bundle from 464 kB to 1.97 MB — three quarters of the app
+was a layout engine most sessions press once or never. It is now behind a
+dynamic `import()` in `autoLayout`, so the initial download is 533 kB (165 kB
+gzipped) and ELK's 1.43 MB arrives on the first Ctrl L. The instance is cached,
+so a second layout is immediate.
+
 ### Deploy
 
 `.github/workflows/deploy.yml` runs lint, unit tests, the build and the smoke
