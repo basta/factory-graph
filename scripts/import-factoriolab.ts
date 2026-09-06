@@ -8,7 +8,7 @@
  * `public/data/<set>.json` + `public/sprites/<set>.webp`. Both the script and
  * its output are committed; the app never fetches from FactorioLab at runtime.
  *
- * FactorioLab data is CC-BY-SA / MIT per that repository; see README.
+ * FactorioLab is MIT licensed; the icons within are Wube game assets. See README.
  */
 import { readFileSync, writeFileSync, mkdirSync, copyFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';

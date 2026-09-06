@@ -68,9 +68,14 @@ public/     data/, sprites/, fonts/
 `DESIGN.md` is the visual brief. `NOTES.md` is the running log of what each screenshot
 showed and what changed because of it.
 
-## Credits
+## Credits and licence
 
-Recipe data and icons are derived from
-[FactorioLab](https://github.com/factoriolab/factoriolab) and are subject to that
-project's licence; Factorio is a trademark of Wube Software. This project is not
-affiliated with either.
+The application code is MIT licensed — see `LICENSE`.
+
+Recipe data and the icon sprite sheet under `public/` are derived from
+[FactorioLab](https://github.com/factoriolab/factoriolab), which is MIT licensed.
+The icons themselves are game assets belonging to
+[Wube Software](https://factorio.com); they are used here the way every community
+calculator uses them, and are not covered by this project's licence. Factorio is
+a trademark of Wube Software. This project is not affiliated with Wube or with
+FactorioLab.
