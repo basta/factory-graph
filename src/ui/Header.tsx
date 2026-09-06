@@ -14,6 +14,7 @@ import {
   RedoIcon,
   ShareIcon,
   UndoIcon,
+  WarnIcon,
 } from './icons.tsx';
 import styles from './Header.module.css';
 
@@ -34,6 +35,8 @@ interface Props {
 
 /** How many raw inputs fit before the strip stops listing them. */
 const MAX_INPUTS = 6;
+/** Balance below this is solver rounding, not a real shortfall. */
+const BALANCE_EPSILON = 1e-6;
 
 export function Header(props: Props): JSX.Element {
   const { data, items } = useGameData();
@@ -50,6 +53,12 @@ export function Header(props: Props): JSX.Element {
   }
 
   const result = props.result;
+  // A graph with an unbalanced port has totals that do not add up, so say so
+  // rather than letting the strip read like a valid bill of materials.
+  const unbalanced = Object.values(result?.ports ?? {}).filter(
+    (port) => port.connected && Math.abs(port.balance) > BALANCE_EPSILON,
+  ).length;
+
   const inputs = Object.entries(result?.totals.rawInputs ?? {})
     .filter(([, value]) => value > 0)
     .sort((a, b) => b[1] - a[1])
@@ -91,6 +100,18 @@ export function Header(props: Props): JSX.Element {
               <PollutionIcon className={styles.glyph} />
               <span className="mono">{pollution(result.totals.pollutionPerMin)}</span>
             </span>
+            {unbalanced > 0 ? (
+              <>
+                <span className={styles.divider} />
+                <span
+                  className={styles.warn}
+                  title="Fixed machine counts disagree. Free a count, or change it, to make the chain balance."
+                >
+                  <WarnIcon />
+                  {unbalanced === 1 ? '1 port unbalanced' : `${unbalanced} ports unbalanced`}
+                </span>
+              </>
+            ) : null}
             {inputs.length > 0 ? <span className={styles.divider} /> : null}
             {inputs.map(([itemId, value]) => {
               const item = items.get(itemId);
@@ -103,13 +124,11 @@ export function Header(props: Props): JSX.Element {
               );
             })}
           </>
-        ) : (
+        ) : result?.status === 'infeasible' ? (
           <span className={styles.hint}>
-            {result?.status === 'infeasible'
-              ? 'No solution — check for conflicting fixed counts.'
-              : 'Set a fixed rate or machine count to solve.'}
+            No solution. Free one of the fixed counts and try again.
           </span>
-        )}
+        ) : null}
       </div>
 
       <div className={styles.actions}>

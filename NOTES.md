@@ -207,3 +207,57 @@ item names the node and "source"/"sink" is the muted qualifier.
 reach: port-to-port drags, the drop-on-blank-canvas search and its pre-filter, a
 mismatched port refusing, click-to-select, Ctrl Z/Shift Z, Ctrl D, Delete, and
 survival of a reload. It fails the build if any of them regress.
+
+## M3 — Solver
+
+Wiring, mostly: the LP and its 27 tests landed in M1, so this milestone was
+`useMemo(solve)` plus a `SolveProvider`, the numbers on nodes, edges and ports,
+and the totals strip. Verified against the green-circuit chain by hand:
+45/s circuits needs 18 assembling machine 3s, 45 assembling machine 2s of copper
+cable, 72 electric furnaces of plate, 27.34 MW and 243 pollution/min. Every one
+of those matches what the formulas predict.
+
+### What changed after looking at it
+
+**The solver re-ran on every pointer move of a drag.** `useMemo(() => solve(graph,
+…), [graph])` looked right, but `moveNodes` writes a new graph object on every
+mouse move, so dragging a 100-node graph was paying a 5 ms solve per frame.
+Fixed structurally rather than with a guard: `solve` now takes
+`SolverGraph = Pick<Graph, 'nodes' | 'edges'>`, so "the solver never touches
+layout" is enforced by the type, positions cannot invalidate the memo, and a
+test asserts the same nodes solve identically no matter where they sit.
+
+**Self-loops routed straight through their own node.** The first loop path
+bulged 26px above the port, which for a node ~100px tall is *inside* it — the
+Kovarex screenshot showed two loops crossing the node's own rows and each other.
+Rewritten to run under the node, using `useInternalNode` for the real box, with
+each successive port's loop staggered further out so U-235 and U-238 draw as two
+clearly separate paths with their own labels.
+
+**The totals strip read like a valid bill of materials even when the graph did
+not balance.** With a port short by 42.5/s the strip still listed inputs and
+outputs as if they added up. Added an imbalance count in `--warn` next to the
+totals — `1 port unbalanced` — whose tooltip says what to do about it. That is
+the only place `--warn` appears in the header.
+
+**The header and the canvas both said "nothing is pinned".** Dropped the header
+version; the canvas hint is the one that can afford to explain properly, and the
+header now shows nothing at all in that state rather than a second copy.
+
+### One deliberate deviation
+
+The spec says a `no-constraint` graph shows "everything as 0". It shows `—`
+instead. A node that genuinely solves to zero machines — disconnected from
+anything that constrains it, in an otherwise-solved graph — is a different thing
+from a graph that has not been given anything to solve for, and a dash keeps
+those distinguishable. The canvas hint carries the actual message.
+
+### Screenshots
+
+`shots/m3-solved.png` — the green-circuit chain with every number filled in.
+`shots/m3-unbalanced.png` — the warn state: red ring on the short port, the rate
+in `--warn`, the drawn tooltip reading `Missing 42.5/s iron plate`, and the
+header count. The tooltip is drawn rather than left to the browser's `title`, so
+it uses the app's own type and colour and so it shows up in a screenshot at all.
+`shots/m3-kovarex.png` — two self-loops on one node, each labelled.
+`shots/m3-no-constraint.png` — the canvas hint.

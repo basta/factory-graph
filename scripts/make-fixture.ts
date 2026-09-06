@@ -98,6 +98,19 @@ const FIXTURES: Record<string, { projectName: string; graph: Graph }> = {
     ),
   },
 
+  /** Nothing pinned anywhere: every rate is zero and the canvas says why. */
+  'no-constraint': {
+    projectName: 'Green circuits',
+    graph: build(
+      [
+        recipe('cable', 'copper-cable', 'assembling-machine-2', { x: 0, y: 60 }),
+        recipe('circuit', 'electronic-circuit', 'assembling-machine-3', { x: 400, y: 40 }),
+        sink('out', 'electronic-circuit', { x: 800, y: 60 }),
+      ],
+      [link('cable', 'circuit', 'copper-cable'), link('circuit', 'out', 'electronic-circuit')],
+    ),
+  },
+
   /** Same chain with one machine count pinned too low, so a port goes red. */
   'unbalanced': {
     projectName: 'Green circuits',

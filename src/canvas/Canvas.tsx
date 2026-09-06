@@ -19,6 +19,7 @@ import { NoteNodeView } from './NoteNodeView.tsx';
 import { RecipeNodeView } from './RecipeNodeView.tsx';
 import { nodeShape } from './geometry.ts';
 import { useConnecting } from './connecting.ts';
+import { useSolve } from '../solver/context.ts';
 import styles from './Canvas.module.css';
 
 const nodeTypes = {
@@ -58,6 +59,7 @@ export function Canvas({ empty, onAddAt, onDropSearch }: Props): JSX.Element {
   const removeEdges = useGraphStore((state) => state.removeEdges);
   const beginBatch = useGraphStore((state) => state.beginBatch);
   const endBatch = useGraphStore((state) => state.endBatch);
+  const result = useSolve();
   const startConnecting = useConnecting((state) => state.start);
   const clearConnecting = useConnecting((state) => state.clear);
 
@@ -236,6 +238,13 @@ export function Canvas({ empty, onAddAt, onDropSearch }: Props): JSX.Element {
             recipe.
           </p>
         </div>
+      ) : null}
+      {!empty && result?.status === 'no-constraint' ? (
+        // Every rate is zero until something pins one down. Say which knob.
+        <p className={styles.hint}>
+          Nothing is pinned yet, so every rate is zero. Select a node and fix its machine
+          count, or add a sink with a rate.
+        </p>
       ) : null}
       <MiniMap />
       <CanvasControls />

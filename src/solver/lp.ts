@@ -21,7 +21,7 @@
  */
 import solver, { type ModelDefinition } from 'javascript-lp-solver';
 import type { GameIndex } from '../data/loader.ts';
-import type { FlowEdge, Graph, GraphNode, NodeId, PortSide } from '../graph/types.ts';
+import type { FlowEdge, GraphNode, NodeId, PortSide, SolverGraph } from '../graph/types.ts';
 import { portKey } from '../graph/types.ts';
 import { inputPerCraft, machineRates, outputPerCraft, type MachineRates } from './rates.ts';
 
@@ -95,7 +95,7 @@ function setCost(variables: Record<string, Coefficients>, name: string, cost: nu
   entry[OBJECTIVE] = cost;
 }
 
-export function buildLp(graph: Graph, index: GameIndex): LpBuild {
+export function buildLp(graph: SolverGraph, index: GameIndex): LpBuild {
   // --- per-node rates ------------------------------------------------------
   const nodes = new Map<NodeId, NodeSpec>();
   for (const node of graph.nodes) {

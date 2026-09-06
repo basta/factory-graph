@@ -133,3 +133,13 @@ export const TrashIcon = (p: GlyphProps): JSX.Element =>
     </>,
     p,
   );
+
+export const WarnIcon = (p: GlyphProps): JSX.Element =>
+  svg(
+    <>
+      <path d="M8 2.2 14.6 13.4H1.4z" />
+      <path d="M8 6.4v3.2" />
+      <path d="M8 11.6h.01" />
+    </>,
+    p,
+  );

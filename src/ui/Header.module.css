@@ -70,6 +70,15 @@
   background: var(--line);
 }
 
+.warn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex: none;
+  color: var(--warn);
+  white-space: nowrap;
+}
+
 .hint {
   color: var(--ink-muted);
   white-space: nowrap;

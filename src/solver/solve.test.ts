@@ -163,6 +163,19 @@ describe('solve', () => {
     expect(shortfall.balance).toBeCloseTo(-9.375, 6);
   });
 
+  it('ignores layout entirely', () => {
+    // The solver takes only nodes and edges, so a drag cannot change a number
+    // and cannot invalidate a memoised result.
+    const nodes = [recipe('circuit', 'electronic-circuit', 'assembling-machine-3', { machines: 2 })];
+    const here = solve({ nodes, edges: [] }, index);
+    const there = solve({ nodes, edges: [] }, index);
+    expect(here).toEqual(there);
+    // And a full graph with positions solves to the same thing.
+    const withLayout = graphOf(nodes, []);
+    withLayout.positions.circuit = { x: 9999, y: -9999 };
+    expect(solve(withLayout, index)).toEqual(here);
+  });
+
   it('keeps unconnected ports balanced against their implicit source', () => {
     const graph = graphOf(
       [recipe('circuit', 'electronic-circuit', 'assembling-machine-3', { machines: 1 })],

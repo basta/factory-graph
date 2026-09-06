@@ -80,6 +80,13 @@ export interface Graph {
  */
 export type PortSide = 'in' | 'out';
 
+/**
+ * What the solver is allowed to see. Positions are deliberately not part of
+ * it, so "the solver never touches layout" is enforced by the type rather than
+ * by discipline — and so a drag cannot invalidate a memoised solve.
+ */
+export type SolverGraph = Pick<Graph, 'nodes' | 'edges'>;
+
 export type PortKey = `${NodeId}:${string}`;
 
 export const portKey = (nodeId: NodeId, side: PortSide, itemId: string): PortKey =>

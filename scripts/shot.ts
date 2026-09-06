@@ -19,7 +19,7 @@ interface Options {
   height: number;
   dpr: number;
   hash: string | null;
-  steps: { kind: 'press' | 'type' | 'click' | 'wait'; value: string }[];
+  steps: { kind: 'press' | 'type' | 'click' | 'hover' | 'wait'; value: string }[];
 }
 
 function parseArgs(argv: string[]): Options {
@@ -41,6 +41,7 @@ function parseArgs(argv: string[]): Options {
     else if (flag === '--press') options.steps.push({ kind: 'press', value });
     else if (flag === '--type') options.steps.push({ kind: 'type', value });
     else if (flag === '--click') options.steps.push({ kind: 'click', value });
+    else if (flag === '--hover') options.steps.push({ kind: 'hover', value });
     else if (flag === '--wait') options.steps.push({ kind: 'wait', value });
   }
   return options;
@@ -65,6 +66,7 @@ async function runSteps(page: Page, options: Options): Promise<void> {
     if (step.kind === 'press') await page.keyboard.press(step.value);
     else if (step.kind === 'type') await page.keyboard.type(step.value, { delay: 12 });
     else if (step.kind === 'click') await page.click(step.value);
+    else if (step.kind === 'hover') await page.hover(step.value);
     else await page.waitForTimeout(Number(step.value));
   }
 }

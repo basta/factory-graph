@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ReactFlowProvider, useReactFlow } from '@xyflow/react';
 import { GameDataProvider } from './data/context.ts';
 import { loadGameData, type GameIndex } from './data/loader.ts';
@@ -20,6 +20,8 @@ import { Search, type SearchChoice, type SearchIntent } from './ui/Search.tsx';
 import { ShortcutsOverlay } from './ui/ShortcutsOverlay.tsx';
 import { Toast } from './ui/Toast.tsx';
 import { isTyping } from './ui/keys.ts';
+import { solve } from './solver/index.ts';
+import { SolveProvider } from './solver/context.ts';
 import styles from './App.module.css';
 
 export function App(): JSX.Element {
@@ -95,6 +97,14 @@ function Editor({ index }: { index: GameIndex }): JSX.Element {
   const selection = useGraphStore((state) => state.selection);
   const selectedEdges = useGraphStore((state) => state.selectedEdges);
   const store = useGraphStore;
+
+  // The solve is synchronous and cheap (median 5 ms at 100 nodes), so it runs
+  // on every semantic change rather than behind a debounce that would make the
+  // numbers lag the edit that caused them. Depending on `nodes` and `edges`
+  // rather than on `graph` is what keeps a node drag — which only rewrites
+  // positions — from re-solving on every pointer move.
+  const { nodes, edges } = graph;
+  const result = useMemo(() => solve({ nodes, edges }, index), [nodes, edges, index]);
 
   // --- autosave ------------------------------------------------------------
   // The document is already in the store by the time this component mounts.
@@ -257,7 +267,7 @@ function Editor({ index }: { index: GameIndex }): JSX.Element {
       <Header
         projectName={projectName}
         onProjectNameChange={store.getState().setProjectName}
-        result={null}
+        result={result}
         canUndo={past > 0}
         canRedo={future > 0}
         onUndo={store.getState().undo}
@@ -269,15 +279,17 @@ function Editor({ index }: { index: GameIndex }): JSX.Element {
         onHelp={() => setHelpOpen(true)}
       />
       <div className={styles.body}>
-        <Canvas
-          empty={graph.nodes.length === 0}
-          onAddAt={(screen) => openSearchAtScreen(screen, { kind: 'anything' }, null)}
-          onDropSearch={onDropSearch}
-        />
-        <Inspector
-          selection={selection}
-          onClose={() => store.getState().setSelection([], selectedEdges)}
-        />
+        <SolveProvider value={result}>
+          <Canvas
+            empty={graph.nodes.length === 0}
+            onAddAt={(screen) => openSearchAtScreen(screen, { kind: 'anything' }, null)}
+            onDropSearch={onDropSearch}
+          />
+          <Inspector
+            selection={selection}
+            onClose={() => store.getState().setSelection([], selectedEdges)}
+          />
+        </SolveProvider>
       </div>
       <Search
         open={search.open}

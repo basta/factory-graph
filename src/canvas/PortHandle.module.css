@@ -39,3 +39,31 @@
 .accepts {
   box-shadow: 0 0 0 2px var(--copper);
 }
+
+/* Our own tooltip, so an imbalance is explained in the app's own type. */
+.tip {
+  position: absolute;
+  z-index: 20;
+  transform: translateY(-50%);
+  padding: 2px 6px;
+  white-space: nowrap;
+  font-size: var(--size-port);
+  color: var(--ink);
+  background: var(--panel-raised);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  pointer-events: none;
+}
+
+.tipWarn {
+  color: var(--warn);
+  border-color: var(--warn);
+}
+
+.tipLeft {
+  right: calc(100% + 10px);
+}
+
+.tipRight {
+  left: calc(100% + 10px);
+}

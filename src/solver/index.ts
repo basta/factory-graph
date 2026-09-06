@@ -1,5 +1,5 @@
 import type { GameIndex } from '../data/loader.ts';
-import type { Graph, PortKey } from '../graph/types.ts';
+import type { PortKey, SolverGraph } from '../graph/types.ts';
 import { buildLp, runLp } from './lp.ts';
 import { PIPE_THROUGHPUT_PER_SEC } from './rates.ts';
 import type { EdgeResult, NodeResult, PortResult, SolveResult } from './types.ts';
@@ -35,11 +35,14 @@ function bump(into: Record<string, number>, key: string, amount: number): void {
 /**
  * Solves a graph. Synchronous and pure: same graph in, same numbers out.
  *
+ * Takes only the nodes and edges, never the positions — so moving a node
+ * cannot invalidate a memoised result and a drag does not re-solve.
+ *
  * Returns `no-constraint` when nothing pins a rate — the whole graph is zero
  * and the canvas says so, rather than showing a meaningless all-zero solution
  * as if it were an answer.
  */
-export function solve(graph: Graph, index: GameIndex): SolveResult {
+export function solve(graph: SolverGraph, index: GameIndex): SolveResult {
   const build = buildLp(graph, index);
   if (!build.hasConstraint) return emptySolveResult('no-constraint');
 
