@@ -4,6 +4,8 @@ A node editor for Factorio production chains. Nodes are recipe steps, edges are 
 flows, and a linear-programming solver keeps every rate consistent as you edit. The
 result is a ratio sheet you can read spatially and share as a URL.
 
+**[basta.github.io/factory-graph](https://basta.github.io/factory-graph/)**
+
 Static site, no backend. Factorio 2.0 base + Space Age.
 
 ## Running it
