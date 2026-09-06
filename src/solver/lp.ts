@@ -215,10 +215,19 @@ export function buildLp(graph: SolverGraph, index: GameIndex): LpBuild {
     const excess = excessVar(port.key);
     const wrongSupply = port.side === 'out' ? W_WRONG_SIDE : 1;
     const wrongExcess = port.side === 'in' ? W_WRONG_SIDE : 1;
-    setCost(variables, supply, connected ? W_IMBALANCE * wrongSupply : W_IMPLICIT_IN);
-    setCost(variables, excess, connected ? W_IMBALANCE * wrongExcess : W_EXCESS);
-    addTerm(variables, supply, constraintName, 1);
-    addTerm(variables, excess, constraintName, -1);
+
+    // On an unconnected port one of the two slacks is provably zero: nothing
+    // arrives at an unconnected input, so there is no surplus to dispose of,
+    // and nothing leaves an unconnected output, so there is no shortfall to
+    // cover. Emitting them anyway is a third of the program for no answer.
+    if (connected || port.side === 'in') {
+      setCost(variables, supply, connected ? W_IMBALANCE * wrongSupply : W_IMPLICIT_IN);
+      addTerm(variables, supply, constraintName, 1);
+    }
+    if (connected || port.side === 'out') {
+      setCost(variables, excess, connected ? W_IMBALANCE * wrongExcess : W_EXCESS);
+      addTerm(variables, excess, constraintName, -1);
+    }
   }
 
   const model: ModelDefinition = {
