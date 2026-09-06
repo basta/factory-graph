@@ -1,0 +1,142 @@
+@font-face {
+  font-family: 'IBM Plex Sans';
+  src: url('/fonts/plex-sans-400.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'IBM Plex Sans';
+  src: url('/fonts/plex-sans-500.woff2') format('woff2');
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'IBM Plex Mono';
+  src: url('/fonts/plex-mono-400.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'IBM Plex Mono';
+  src: url('/fonts/plex-mono-500.woff2') format('woff2');
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+
+:root {
+  --bg-canvas: #2b2a28; /* warm dark grey, like oiled cast iron */
+  --grid-dot: #3a3835; /* dot grid on the canvas, 24px pitch, dots 1px */
+  --panel: #34322f; /* nodes, inspector, header */
+  --panel-raised: #403d39; /* node header band, hovered rows */
+  --line: #57534e; /* borders, hairlines */
+  --ink: #ede7da; /* primary text, warm off-white */
+  --ink-muted: #a39e93;
+  --copper: #d4874a; /* selection, focus, primary buttons, edge highlight */
+  --brass: #e5b95c; /* item-rate numbers on edges and ports */
+  --fluid: #6fa8c7; /* fluid ports/edges only */
+  --warn: #e0553a; /* imbalance, saturation > 100 % */
+  --ok-dim: #7a8a6a; /* balanced port indicator */
+
+  --font-ui: 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, 'Cascadia Mono', 'Consolas', monospace;
+
+  --size-ui: 13px;
+  --size-mono: 12px;
+  --size-title: 15px;
+  --size-port: 11px;
+
+  --radius: 3px;
+  --header-h: 44px;
+  --inspector-w: 320px;
+  --grid-pitch: 24px;
+
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--bg-canvas);
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: var(--size-ui);
+  line-height: 1.35;
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+}
+
+/* Numbers that get compared to other numbers. Never used for decoration. */
+.mono {
+  font-family: var(--font-mono);
+  font-size: var(--size-mono);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+
+:focus {
+  outline: none;
+}
+:focus-visible {
+  outline: 2px solid var(--copper);
+  outline-offset: 2px;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+}
+
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: none;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--line);
+  border: 3px solid transparent;
+  background-clip: content-box;
+  border-radius: 999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--ink-muted);
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}

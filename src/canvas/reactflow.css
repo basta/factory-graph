@@ -1,0 +1,69 @@
+/**
+ * React Flow's stylesheet, then everything of its default look overridden.
+ * Nothing here should be visible as "React Flow" — see DESIGN.md.
+ */
+@import '@xyflow/react/dist/base.css';
+
+.react-flow {
+  --xy-background-color: var(--bg-canvas);
+  background: var(--bg-canvas);
+}
+
+.react-flow__pane {
+  cursor: default;
+}
+.react-flow__pane.dragging {
+  cursor: grabbing;
+}
+
+.react-flow__node {
+  font-family: var(--font-ui);
+  font-size: var(--size-ui);
+  color: var(--ink);
+  cursor: default;
+}
+
+/* Selection is drawn by the node itself, not by a React Flow outline. */
+.react-flow__node.selected,
+.react-flow__node:focus,
+.react-flow__node:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+
+.react-flow__handle {
+  border: none;
+  background: none;
+  min-width: 0;
+  min-height: 0;
+}
+.react-flow__handle::after {
+  content: none;
+}
+
+.react-flow__edge {
+  cursor: pointer;
+}
+.react-flow__edge-path {
+  stroke-linecap: butt;
+}
+.react-flow__edge.selected .react-flow__edge-path,
+.react-flow__edge:focus .react-flow__edge-path {
+  outline: none;
+}
+
+.react-flow__connectionline path {
+  stroke: var(--copper);
+  stroke-width: 2;
+  stroke-dasharray: 4 3;
+}
+
+/* Box select. */
+.react-flow__selection {
+  background: color-mix(in srgb, var(--copper) 12%, transparent);
+  border: 1px solid var(--copper);
+}
+
+.react-flow__attribution {
+  display: none;
+}

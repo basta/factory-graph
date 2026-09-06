@@ -1,0 +1,87 @@
+.scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: grid;
+  place-items: center;
+  background: color-mix(in srgb, var(--bg-canvas) 78%, transparent);
+}
+
+.panel {
+  width: min(680px, calc(100vw - 48px));
+  max-height: calc(100vh - 96px);
+  overflow: auto;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 44px;
+  padding: 0 8px 0 14px;
+  border-bottom: 1px solid var(--line);
+}
+
+.title {
+  font-size: var(--size-title);
+  font-weight: 500;
+}
+
+/* Hairlines come from the 1px gap showing the container through, so the grid
+   is correct at any column count without per-cell border rules. */
+.groups {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 1px;
+  background: var(--line);
+}
+
+.group {
+  padding: 12px 14px 14px;
+  background: var(--panel);
+}
+
+.groupName {
+  margin: 0 0 6px;
+  font-size: var(--size-ui);
+  font-weight: 400;
+  color: var(--ink-muted);
+}
+
+.row {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 3px 0;
+}
+
+.keys {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+  width: 132px;
+}
+
+/* The plain-language half of a gesture: "Space" + drag. */
+.then {
+  color: var(--ink-muted);
+}
+
+.key {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 16px;
+  padding: 0 5px;
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 2px;
+  background: var(--panel-raised);
+}
+
+.description {
+  color: var(--ink-muted);
+}

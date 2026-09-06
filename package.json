@@ -1,0 +1,41 @@
+{
+  "name": "factorio-nodes",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "lint": "oxlint",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "data:import": "tsx scripts/import-factoriolab.ts",
+    "shot": "tsx scripts/shot.ts",
+    "data:fetch": "tsx scripts/fetch-factoriolab.ts"
+  },
+  "dependencies": {
+    "@xyflow/react": "^12.11.6",
+    "elkjs": "^0.12.0",
+    "javascript-lp-solver": "^1.0.3",
+    "lz-string": "^1.5.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "zod": "^4.5.4",
+    "zustand": "^5.0.15"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.3",
+    "@types/react": "^18.3.31",
+    "@types/react-dom": "^18.3.7",
+    "@vitejs/plugin-react": "^6.1.0",
+    "@vitest/coverage-v8": "^5.0.0",
+    "jsdom": "^29.1.1",
+    "oxlint": "^1.79.0",
+    "playwright": "^1.63.0",
+    "tsx": "^4.23.13",
+    "typescript": "~6.0.2",
+    "vite": "^8.2.2",
+    "vitest": "^5.0.0"
+  }
+}

@@ -1,0 +1,24 @@
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+.loading {
+  display: grid;
+  place-content: center;
+  gap: 6px;
+  height: 100%;
+  color: var(--ink-muted);
+  text-align: center;
+}
+
+.loadingHint {
+  margin: 0;
+}

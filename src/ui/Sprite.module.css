@@ -1,0 +1,24 @@
+.sprite {
+  display: inline-block;
+  flex: none;
+  position: relative;
+  background-repeat: no-repeat;
+  image-rendering: auto;
+}
+
+/* Technology tiers ship as one sprite plus an overlaid numeral. */
+.text {
+  position: absolute;
+  right: 0;
+  bottom: -1px;
+  font-family: var(--font-mono);
+  font-size: inherit;
+  font-weight: 500;
+  line-height: 1;
+  color: var(--ink);
+  text-shadow:
+    0 1px 0 #000,
+    0 -1px 0 #000,
+    1px 0 0 #000,
+    -1px 0 0 #000;
+}
