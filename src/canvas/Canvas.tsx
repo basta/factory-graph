@@ -19,6 +19,7 @@ import { NoteNodeView } from './NoteNodeView.tsx';
 import { RecipeNodeView } from './RecipeNodeView.tsx';
 import { nodeShape } from './geometry.ts';
 import { useConnecting } from './connecting.ts';
+import { useKeepSelectionVisible } from './useKeepSelectionVisible.ts';
 import { useSolve } from '../solver/context.ts';
 import styles from './Canvas.module.css';
 
@@ -61,6 +62,7 @@ export function Canvas({ empty, onAddAt, onDropSearch }: Props): JSX.Element {
   const endBatch = useGraphStore((state) => state.endBatch);
   const result = useSolve();
   const startConnecting = useConnecting((state) => state.start);
+  useKeepSelectionVisible(selection);
   const clearConnecting = useConnecting((state) => state.clear);
 
   const nodes = useMemo<Node[]>(

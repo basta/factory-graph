@@ -99,3 +99,38 @@
   align-items: center;
   gap: 2px;
 }
+
+@media (max-width: 720px) {
+  .header {
+    gap: 8px;
+    padding: 0 4px 0 8px;
+  }
+
+  /* The data set name is the first thing that can go. */
+  .dataSet {
+    display: none;
+  }
+
+  /* Totals stay, but scroll instead of pushing the actions off the edge. */
+  .totals {
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .totals::-webkit-scrollbar {
+    display: none;
+  }
+
+  .name {
+    width: 10ch;
+  }
+
+  .actions {
+    gap: 6px;
+  }
+
+  /* Actions that only make sense with a keyboard and a filesystem. */
+  .wide {
+    display: none;
+  }
+}

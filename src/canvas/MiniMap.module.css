@@ -27,3 +27,10 @@
   stroke: var(--ink-muted);
   stroke-width: 1;
 }
+
+/* Too small to aim at, and it would sit under the inspector sheet. */
+@media (max-width: 720px) {
+  .minimap {
+    display: none;
+  }
+}

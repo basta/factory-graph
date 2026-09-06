@@ -309,3 +309,85 @@ read off disk and compared against the live graph, the canvas is emptied, and
 round-tripped through `localStorage.clear()` and a fresh navigation, so it is
 proven to carry the graph on its own. Auto-layout is asserted to move nodes, to
 cost exactly one undo step, and to restore every position on that one undo.
+
+## M5 — Polish
+
+### Shortcut audit
+
+Walked the `?` overlay against the handler and found the documentation lying in
+two places. It claimed **Shift+drag** box-selects; with `panOnDrag={[1, 2]}` and
+`selectionOnDrag`, a plain left-drag on the canvas box-selects and Shift is what
+*adds to* a selection. And double-clicking an edge deletes it, which was
+implemented and undocumented. Both fixed in `shortcuts.ts`, which the overlay
+and the handler both read, so they cannot drift again.
+
+One behaviour changed as a result of the audit rather than the docs: **Ctrl S,
+E, I and L now work while a text field has focus.** They are project-level
+commands, the way Ctrl S is in any editor, and the smoke test caught the old
+behaviour by failing to export right after typing in a note. Everything below
+them still yields to the field — Ctrl A must select text, Delete must delete a
+character, Ctrl Z must undo the typing rather than the graph.
+
+### Reduced motion
+
+The stylesheet's `prefers-reduced-motion` block only reaches CSS transitions.
+React Flow animates pan and zoom in JavaScript, so `viewportDuration()` checks
+the media query and every `fitView`, `zoomIn`, `zoomOut`, `setCenter` and
+`setViewport` call goes through it. The smoke test opens a second browser
+context with `reducedMotion: 'reduce'` and asserts the computed transition
+duration on the inspector and on a header button is effectively zero — Chrome
+reports the override as `1e-06s`, which is why that check parses the duration
+instead of pattern-matching the string.
+
+### Mobile
+
+At 390px the 320px inspector would take most of the screen, so below 720px it
+becomes a **bottom sheet**: full width, capped at half the viewport, sliding up
+instead of in, scrolling on its own. The minimap is hidden (too small to aim at,
+and it would sit under the sheet), the data set name goes, the totals strip
+scrolls rather than pushing the actions off the edge, and auto-layout, export and
+import are hidden — they want a keyboard and a filesystem, and the share link is
+the one that is actually useful on a phone. Everything else works: the sheet
+carries the full machine, module, beacon and constraint controls.
+
+### The wart the screenshots kept showing
+
+Selecting a node near the right edge hid it under the inspector, because the
+panel takes 320px off the canvas after the view has already been framed. Three
+separate screenshots showed it before I fixed it. `useKeepSelectionVisible` pans
+by the smallest amount that brings the node back, and only when it is actually
+clipped — so it never drags the view out from under someone who can already see
+what they selected.
+
+### Deploy
+
+`.github/workflows/deploy.yml` runs lint, unit tests, the build and the smoke
+test, then builds again with `BASE_PATH` and runs `check:base` before publishing
+to Pages. That last step exists because a sub-path deploy fails in a way nothing
+else catches: an asset referenced from the site root works perfectly at `/` and
+404s at `/<repo>/`. It verified that Vite rewrites the `@font-face` URLs, and
+that the sprite sheet and data set — which build their own URLs from
+`import.meta.env.BASE_URL` — follow the base too.
+
+### Final screenshots
+
+`shots/m5-desktop.png` at 1440×900 and `shots/m5-mobile.png` at 390×844, both of
+the same seven-node red-science chain. What changed after looking at them: the
+selection-visibility nudge above, and the narrow-screen header trim (the first
+390px pass pushed the pollution figure and half the actions off the edge).
+
+## Where this stands
+
+Everything the spec asked for is in and checked. Known limits, all deliberate:
+
+- **Quality, blueprint strings, space platforms and multi-graph projects** are
+  the spec's stated non-goals and are absent. Quality modules are hidden from
+  the pickers rather than offered as a choice that does nothing useful.
+- **Pipe saturation is approximate.** Belts and inserters come from the game
+  data; Factorio's pipe throughput depends on run length, and the 1000 units/s
+  constant is the figure calculators use for a short run.
+- **Fuel is not modelled.** Burner machines show zero electricity, which is
+  true, but the coal they eat is not in `totals.rawInputs`.
+- **Solve timing has headroom, not margin.** 100 nodes solve in ~5 ms against a
+  10 ms budget. A few hundred nodes would want the `glpk.js` swap the spec
+  allows; `runLp` is the single function to change.

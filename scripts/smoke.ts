@@ -75,6 +75,17 @@ async function handleBox(
   return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
 }
 
+/**
+ * A CSS duration in milliseconds. Chrome reports the reduced-motion override
+ * as `1e-06s`, so this has to parse rather than pattern-match.
+ */
+function millis(duration: string): number {
+  const text = duration.trim();
+  const value = Number.parseFloat(text);
+  if (!Number.isFinite(value)) return Number.POSITIVE_INFINITY;
+  return text.endsWith('ms') ? value : value * 1000;
+}
+
 /** The inspector's first line is its title. */
 const firstLine = (text: string): string => text.split(String.fromCharCode(10))[0]?.trim() ?? '';
 
@@ -376,6 +387,57 @@ async function main(): Promise<void> {
       `${state.nodes.length} nodes, ${state.edges.length} edges`,
     );
 
+    // --- multi-select editing -----------------------------------------------
+    await page.keyboard.press('Control+a');
+    await page.waitForTimeout(200);
+    const multiTitle = await page.locator('aside[aria-label="Node inspector"]').innerText();
+    check('selecting several nodes says how many', /3 nodes selected/.test(multiTitle), firstLine(multiTitle));
+
+    // Every selected recipe node should take the machine change at once.
+    const beforeMulti = await snapshot(page);
+    await page.selectOption('aside[aria-label="Node inspector"] select[aria-label="Machine"]', {
+      index: 0,
+    });
+    await page.waitForTimeout(300);
+    state = await snapshot(page);
+    check(
+      'editing a shared field is one undo step for the whole selection',
+      state.undoDepth === beforeMulti.undoDepth + 1,
+      `${beforeMulti.undoDepth} -> ${state.undoDepth}`,
+    );
+    await page.keyboard.press('Control+z');
+    await page.waitForTimeout(200);
+
+    // --- note nodes ----------------------------------------------------------
+    await page.keyboard.press('Escape');
+    await page.keyboard.press('Control+k');
+    await page.waitForTimeout(150);
+    await page.keyboard.type('note', { delay: 8 });
+    await page.waitForTimeout(250);
+    await page.keyboard.press('Enter');
+    await page.waitForTimeout(250);
+    state = await snapshot(page);
+    check(
+      'the palette can add a note',
+      state.nodes.some((node) => node.kind === 'note'),
+      state.nodes.map((node) => node.kind).join(','),
+    );
+
+    await page.fill('textarea[aria-label="Note text"]', 'Feeds the mall');
+    await page.click('.react-flow__pane', { position: { x: 40, y: 500 } });
+    await page.waitForTimeout(250);
+    const noteText = await page.locator('textarea[aria-label="Note text"]').inputValue();
+    check('and the note keeps what you typed', noteText === 'Feeds the mall', noteText);
+
+    // Tidy up so the export check below sees the same graph it expects. The
+    // pane click first, so focus leaves the textarea before Delete.
+    await page.click('.react-flow__node:has(textarea)', { position: { x: 4, y: 2 } });
+    await page.click('.react-flow__node:has(textarea)', { position: { x: 4, y: 2 } });
+    await page.waitForTimeout(150);
+    await page.keyboard.press('Delete');
+    await page.waitForTimeout(250);
+    check('deleting the note leaves the recipes', (await snapshot(page)).nodes.length === 3);
+
     // --- export and import ---------------------------------------------------
     const [download] = await Promise.all([
       page.waitForEvent('download'),
@@ -419,6 +481,40 @@ async function main(): Promise<void> {
     unlinkSync(savedPath);
 
     check('no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
+
+    // --- reduced motion ------------------------------------------------------
+    const still = await browser.newContext({
+      viewport: { width: 1440, height: 900 },
+      reducedMotion: 'reduce',
+    });
+    const stillPage = await still.newPage();
+    await stillPage.goto(URL);
+    await stillPage.waitForTimeout(600);
+    await stillPage.keyboard.press('Control+k');
+    await stillPage.waitForTimeout(150);
+    await stillPage.keyboard.type('iron plate', { delay: 8 });
+    await stillPage.waitForTimeout(200);
+    await stillPage.keyboard.press('Enter');
+    await stillPage.waitForTimeout(300);
+
+    // No named helper inside evaluate: esbuild wraps named function
+    // expressions in a `__name()` call that does not exist in the page.
+    const durations = await stillPage.evaluate(() => {
+      const panel = document.querySelector('aside[aria-label="Node inspector"]');
+      const button = document.querySelector('header button');
+      return {
+        panel: panel ? getComputedStyle(panel).transitionDuration : 'missing',
+        button: button ? getComputedStyle(button).transitionDuration : 'missing',
+      };
+    });
+    check(
+      'reduced motion stops the inspector sliding',
+      millis(durations.panel) < 1,
+      durations.panel,
+    );
+    check('and stops button transitions', millis(durations.button) < 1, durations.button);
+    await still.close();
+
     await browser.close();
   } finally {
     preview.kill();

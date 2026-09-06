@@ -81,3 +81,26 @@
   padding: 14px 12px;
   color: var(--ink-muted);
 }
+
+/* The note row has no game sprite; keep the column aligned anyway. */
+.noIcon {
+  width: 20px;
+  height: 20px;
+  flex: none;
+  border: 1px dashed var(--line);
+  border-radius: 1px;
+}
+
+@media (max-width: 720px) {
+  .scrim {
+    padding-top: 6vh;
+  }
+
+  .panel {
+    width: calc(100vw - 20px);
+  }
+
+  .results {
+    max-height: 60vh;
+  }
+}

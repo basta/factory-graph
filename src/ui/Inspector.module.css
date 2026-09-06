@@ -251,3 +251,32 @@
   background: var(--panel-raised);
   color: var(--ink);
 }
+
+/*
+ * Narrow screens. The 320px panel would take most of a phone, so the inspector
+ * becomes a bottom sheet instead of a side rail: it slides up rather than in,
+ * is capped at half the viewport, and scrolls on its own.
+ */
+@media (max-width: 720px) {
+  .inspector {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 6;
+    width: auto;
+    max-height: 50vh;
+    margin-right: 0;
+    border-left: none;
+    border-top: 1px solid var(--line);
+    transform: translateY(100%);
+  }
+
+  .open {
+    transform: translateY(0);
+  }
+
+  .label {
+    width: 96px;
+  }
+}

@@ -139,7 +139,11 @@ export function Header(props: Props): JSX.Element {
           <IconButton label="Redo (Ctrl Shift Z)" onClick={props.onRedo} disabled={!props.canRedo}>
             <RedoIcon />
           </IconButton>
-          <IconButton label="Auto-layout (Ctrl L)" onClick={props.onLayout}>
+          <IconButton
+            label="Auto-layout (Ctrl L)"
+            onClick={props.onLayout}
+            className={styles.wide}
+          >
             <LayoutIcon />
           </IconButton>
         </div>
@@ -147,10 +151,20 @@ export function Header(props: Props): JSX.Element {
           <IconButton label="Copy link (Ctrl S)" onClick={props.onShare}>
             <ShareIcon />
           </IconButton>
-          <IconButton label="Export JSON (Ctrl E)" onClick={props.onExport}>
+          {/* File actions need a filesystem to be worth much; on a phone the
+              share link is the useful one and these only crowd the bar. */}
+          <IconButton
+            label="Export JSON (Ctrl E)"
+            onClick={props.onExport}
+            className={styles.wide}
+          >
             <ExportIcon />
           </IconButton>
-          <IconButton label="Import JSON (Ctrl I)" onClick={props.onImport}>
+          <IconButton
+            label="Import JSON (Ctrl I)"
+            onClick={props.onImport}
+            className={styles.wide}
+          >
             <ImportIcon />
           </IconButton>
         </div>

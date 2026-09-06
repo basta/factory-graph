@@ -22,7 +22,7 @@ import { Inspector } from './ui/Inspector.tsx';
 import { Search, type SearchChoice, type SearchIntent } from './ui/Search.tsx';
 import { ShortcutsOverlay } from './ui/ShortcutsOverlay.tsx';
 import { Toast } from './ui/Toast.tsx';
-import { isTyping } from './ui/keys.ts';
+import { isTyping, viewportDuration } from './ui/keys.ts';
 import { solve } from './solver/index.ts';
 import { SolveProvider } from './solver/context.ts';
 import styles from './App.module.css';
@@ -157,7 +157,9 @@ function Editor({ index }: { index: GameIndex }): JSX.Element {
           ? makeRecipeNode(index, choice.recipeId)
           : choice.kind === 'source'
             ? makeSourceNode(choice.itemId)
-            : makeSinkNode(choice.itemId);
+            : choice.kind === 'sink'
+              ? makeSinkNode(choice.itemId)
+              : makeNoteNode();
       if (!node) {
         setToast('That recipe has no machine that can make it.');
         setSearch(CLOSED);
@@ -225,7 +227,7 @@ function Editor({ index }: { index: GameIndex }): JSX.Element {
         if (Object.keys(positions).length === 0) return;
         // One undo step for the whole rearrangement.
         store.getState().setPositions(positions);
-        requestAnimationFrame(() => void flow.fitView({ padding: 0.2, duration: 120 }));
+        requestAnimationFrame(() => void flow.fitView({ padding: 0.2, duration: viewportDuration() }));
       })
       .catch(() => setToast('Auto-layout failed. The graph is unchanged.'));
   }, [flow, index, store]);
@@ -241,6 +243,19 @@ function Editor({ index }: { index: GameIndex }): JSX.Element {
         if (search.open) setSearch(CLOSED);
         else if (helpOpen) setHelpOpen(false);
         else actions.setSelection([], []);
+        return;
+      }
+
+      // Project-level commands work from anywhere, the way Ctrl S does in an
+      // editor. Everything below them would fight the field you are typing in:
+      // Ctrl A must select text, Delete must delete a character, Ctrl Z must
+      // undo the typing rather than the graph.
+      if (control && 'seil'.includes(event.key.toLowerCase()) && !event.shiftKey) {
+        event.preventDefault();
+        if (event.key.toLowerCase() === 's') onShare();
+        else if (event.key.toLowerCase() === 'e') onExport();
+        else if (event.key.toLowerCase() === 'i') onImport();
+        else onLayout();
         return;
       }
       if (typing) return;
@@ -268,21 +283,9 @@ function Editor({ index }: { index: GameIndex }): JSX.Element {
           actions.graph.nodes.map((node) => node.id),
           actions.graph.edges.map((edge) => edge.id),
         );
-      } else if (control && event.key.toLowerCase() === 's') {
-        event.preventDefault();
-        onShare();
-      } else if (control && event.key.toLowerCase() === 'e') {
-        event.preventDefault();
-        onExport();
-      } else if (control && event.key.toLowerCase() === 'i') {
-        event.preventDefault();
-        onImport();
-      } else if (control && event.key.toLowerCase() === 'l') {
-        event.preventDefault();
-        onLayout();
       } else if (control && event.key === '0') {
         event.preventDefault();
-        void flow.fitView({ padding: 0.2, duration: 120 });
+        void flow.fitView({ padding: 0.2, duration: viewportDuration() });
       } else if (event.key === 'Delete' || event.key === 'Backspace') {
         event.preventDefault();
         actions.beginBatch();
@@ -371,5 +374,3 @@ function Editor({ index }: { index: GameIndex }): JSX.Element {
   );
 }
 
-/** Kept for the note node's toolbar entry in M5. */
-export const NOTE_FACTORY = makeNoteNode;

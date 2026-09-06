@@ -18,7 +18,8 @@ export type SearchIntent =
 export type SearchChoice =
   | { kind: 'recipe'; recipeId: string }
   | { kind: 'source'; itemId: string }
-  | { kind: 'sink'; itemId: string };
+  | { kind: 'sink'; itemId: string }
+  | { kind: 'note' };
 
 interface Props {
   open: boolean;
@@ -33,7 +34,8 @@ interface Row {
   id: string;
   /** Right-hand column: producing machine, or what the source/sink does. */
   detail: string;
-  icon: { x: number; y: number; color: string | null; text: string | null };
+  /** Null for the note row, which has no game sprite. */
+  icon: { x: number; y: number; color: string | null; text: string | null } | null;
 }
 
 const LIMIT = 40;
@@ -109,6 +111,16 @@ export function Search({ open, intent, onClose, onChoose }: Props): JSX.Element 
           icon: item.icon,
         });
       }
+    }
+    // A note is not a recipe, so it only shows in the unfiltered palette.
+    if (intent.kind === 'anything') {
+      rows.push({
+        choice: { kind: 'note' },
+        name: 'Note',
+        id: 'note',
+        detail: 'a label on the canvas',
+        icon: null,
+      });
     }
     return rows;
   }, [open, intent, index]);
@@ -186,7 +198,11 @@ export function Search({ open, intent, onClose, onChoose }: Props): JSX.Element 
                 onPointerEnter={() => setActive(position)}
                 onClick={() => commit(position)}
               >
-                <Sprite icon={entry.item.icon} size={20} />
+                {entry.item.icon ? (
+                  <Sprite icon={entry.item.icon} size={20} />
+                ) : (
+                  <span className={styles.noIcon} />
+                )}
                 <span className={styles.name}>
                   {highlight(entry.item.name, entry.positions)}
                 </span>

@@ -13,7 +13,9 @@
     "data:import": "tsx scripts/import-factoriolab.ts",
     "shot": "tsx scripts/shot.ts",
     "data:fetch": "tsx scripts/fetch-factoriolab.ts",
-    "smoke": "tsx scripts/smoke.ts"
+    "smoke": "tsx scripts/smoke.ts",
+    "check": "npm run lint && npm test && npm run build && npm run smoke",
+    "check:base": "tsx scripts/check-base-path.ts"
   },
   "dependencies": {
     "@xyflow/react": "^12.11.6",

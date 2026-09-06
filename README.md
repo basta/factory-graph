@@ -12,9 +12,20 @@ Static site, no backend. Factorio 2.0 base + Space Age.
 npm install
 npm run dev          # http://localhost:5173
 npm run build        # type-check and build to dist/
-npm test             # solver, serializer and data tests
+npm test             # unit tests: solver, store, serializer, layout, data
+npm run smoke        # drives the built app in a real browser (needs `build` first)
+npm run check        # lint + test + build + smoke, what CI runs
 npm run shot -- name # screenshot the built app into shots/
 ```
+
+`npm test` covers everything that is a pure function. `npm run smoke` covers what
+is not: port-to-port drags, the drop-on-empty-canvas search, click-to-select,
+the clipboard, a real file download and re-import, auto-layout, and the
+reduced-motion path. Both run in CI.
+
+To poke at a specific graph, `npx tsx scripts/make-fixture.ts <name>` prints a
+share hash you can paste after the `#` — `green-circuits`, `unbalanced`,
+`saturated-belt`, `kovarex`, `tangle`, `beacons`, `no-constraint`.
 
 ## Refreshing the game data
 
@@ -33,6 +44,12 @@ recipe references a machine or item that is not in the set.
 
 The build is a static site. `base` comes from the `BASE_PATH` environment variable, so a
 GitHub Pages project site works with `BASE_PATH=/factory-graph/ npm run build`.
+`.github/workflows/deploy.yml` does exactly that on a push to `main`.
+
+`npm run check:base` serves that build from a sub-path and asserts the app boots, the
+fonts and sprite sheet load, and nothing 404s — the failure it exists to catch is an
+asset referenced from the site root, which works locally at `/` and breaks the moment
+the site lives at `/<repo>/`.
 
 ## Layout
 

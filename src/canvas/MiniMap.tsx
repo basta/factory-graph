@@ -3,6 +3,7 @@ import { useReactFlow, useStore } from '@xyflow/react';
 import { useGameData } from '../data/context.ts';
 import { useGraphStore } from '../graph/store.ts';
 import { nodeShape } from './geometry.ts';
+import { viewportDuration } from '../ui/keys.ts';
 import styles from './MiniMap.module.css';
 
 const WIDTH = 168;
@@ -72,7 +73,7 @@ export function MiniMap(): JSX.Element | null {
       };
       flow.setCenter(box[0] + fraction.x * box[2], box[1] + fraction.y * box[3], {
         zoom: scale,
-        duration: 120,
+        duration: viewportDuration(),
       });
     },
     [flow],
