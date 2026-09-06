@@ -261,3 +261,51 @@ header count. The tooltip is drawn rather than left to the browser's `title`, so
 it uses the app's own type and colour and so it shows up in a screenshot at all.
 `shots/m3-kovarex.png` — two self-loops on one node, each labelled.
 `shots/m3-no-constraint.png` — the canvas hint.
+
+## M4 — Transport + share
+
+Belt, pipe and inserter transport on edges with saturation; JSON export and
+import; the URL-hash share link; ELK auto-layout.
+
+### What the screenshots and the smoke test caught
+
+**The edge inspector was rendering a node-only section.** `[].every(pred)` is
+`true`, so `nodes.every(n => n.kind === 'source' || n.kind === 'sink')` passed
+with *nothing* selected and a stray "Rate / Solved" control appeared below the
+edge panel's delete button. Fixed with the length check the predicate implies.
+
+**The saturation check in the smoke test failed, correctly.** It set a belt on a
+graph where nothing was pinned, so there was no solve and therefore no
+saturation to report — the app was right and the test was wrong. The test now
+pins a node with `F` first, which also gives the `F` shortcut its own coverage.
+
+### Choices
+
+- **Transport kinds are filtered by what the item is.** A fluid edge offers only
+  a pipe; an item edge offers a belt or inserters. Offering the other would
+  produce a capacity number that means nothing.
+- **Auto-layout seeds ELK with the current positions** (`elk.position` per node)
+  so re-running it nudges the arrangement you have been reading rather than
+  reshuffling it wholesale. Self-edges are dropped before ELK sees them — a loop
+  carries no ordering information and ELK routes it badly — and drawn around
+  their node afterwards.
+- **ELK runs on the main thread** (`elk.bundled.js`). Layout is a deliberate,
+  user-invoked action, not something that happens while typing, so a few hundred
+  milliseconds is fine and a worker would cost a second bundle for
+  responsiveness we do not need.
+- **Share writes the link to the address bar as well as the clipboard**, so a
+  blocked clipboard still leaves the user with something to copy — and the toast
+  says so instead of silently failing.
+- **Import clears the URL hash.** A stale link in the address bar no longer
+  describes what is on screen, and leaving it there means a reload silently
+  reverts the import.
+
+### Coverage
+
+The smoke test now runs 35 checks and covers the real file paths rather than
+just the serializer: `Ctrl E` produces an actual download, the saved JSON is
+read off disk and compared against the live graph, the canvas is emptied, and
+`Ctrl I` drives a real file chooser to bring it back. The share link is
+round-tripped through `localStorage.clear()` and a fresh navigation, so it is
+proven to carry the graph on its own. Auto-layout is asserted to move nodes, to
+cost exactly one undo step, and to restore every position on that one undo.

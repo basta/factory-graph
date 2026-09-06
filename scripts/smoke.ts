@@ -6,6 +6,9 @@
  *   npm run build && npm run smoke
  */
 import { spawn } from 'node:child_process';
+import { readFileSync, unlinkSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { resolve } from 'node:path';
 import { chromium, type Page } from 'playwright';
 
 const PORT = 4319;
@@ -20,8 +23,11 @@ function check(label: string, ok: boolean, detail = ''): void {
 
 interface Snapshot {
   nodes: { id: string; kind: string }[];
-  edges: { from: string; fromPort: string; to: string; toPort: string }[];
+  edges: { id: string; from: string; fromPort: string; to: string; toPort: string; transport: unknown }[];
   selection: string[];
+  selectedEdges: string[];
+  positions: Record<string, { x: number; y: number }>;
+  undoDepth: number;
 }
 
 /** Reads the store through the debug hook the app exposes in every build. */
@@ -31,17 +37,27 @@ async function snapshot(page: Page): Promise<Snapshot> {
       .__factoryGraph;
     if (!store) throw new Error('__factoryGraph hook is missing');
     const state = store.getState() as Snapshot & {
-      graph: { nodes: { id: string; kind: string }[]; edges: Snapshot['edges'] };
+      graph: {
+        nodes: { id: string; kind: string }[];
+        edges: Snapshot['edges'];
+        positions: Snapshot['positions'];
+      };
+      history: { past: unknown[] };
     };
     return {
       nodes: state.graph.nodes.map((node) => ({ id: node.id, kind: node.kind })),
       edges: state.graph.edges.map((edge) => ({
+        id: edge.id,
         from: edge.from,
         fromPort: edge.fromPort,
         to: edge.to,
         toPort: edge.toPort,
+        transport: edge.transport,
       })),
       selection: state.selection,
+      selectedEdges: state.selectedEdges,
+      positions: state.graph.positions,
+      undoDepth: state.history.past.length,
     };
   });
 }
@@ -94,7 +110,12 @@ async function main(): Promise<void> {
     }
 
     const browser = await chromium.launch();
-    const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+    const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+    // Ctrl S writes the share link to the clipboard.
+    await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+    const page = await context.newPage();
+    // Ctrl E saves a file; without this Playwright cancels the download.
+    context.setDefaultTimeout(15_000);
     const errors: string[] = [];
     page.on('pageerror', (error) => errors.push(String(error)));
     page.on('console', (message) => {
@@ -271,6 +292,131 @@ async function main(): Promise<void> {
       state.nodes.length === 3 && state.edges.length === 2,
       `${state.nodes.length} nodes, ${state.edges.length} edges`,
     );
+
+    // --- pin a node so there is a solve to measure against -------------------
+    await page.click(`.react-flow__node[data-id="${circuit}"]`, { position: { x: 120, y: 14 } });
+    await page.waitForTimeout(150);
+    await page.keyboard.press('f');
+    await page.waitForTimeout(250);
+    const pinned = await page.locator('aside[aria-label="Node inspector"]').innerText();
+    check('F pins the selected node', /Fixed/.test(pinned) && /Crafts\/s/.test(pinned));
+
+    // --- edge selection and transport ---------------------------------------
+    const edgeId = (await snapshot(page)).edges[0]!.id;
+    await page.click(`.react-flow__edge[data-id="${edgeId}"] path:last-of-type`, { force: true });
+    await page.waitForTimeout(200);
+    state = await snapshot(page);
+    check('clicking an edge selects it', state.selectedEdges.includes(edgeId), JSON.stringify(state.selectedEdges));
+
+    const edgeTitle = await page.locator('aside[aria-label="Node inspector"]').innerText();
+    check('the inspector shows the edge', edgeTitle.includes('Copper cable'), firstLine(edgeTitle));
+
+    await page.click('button:has-text("Belt")');
+    await page.waitForTimeout(200);
+    state = await snapshot(page);
+    const transport = state.edges.find((edge) => edge.id === edgeId)?.transport as
+      | { kind?: string; lanes?: number }
+      | null;
+    check(
+      'setting a belt records the transport',
+      transport?.kind === 'belt' && transport.lanes === 2,
+      JSON.stringify(transport),
+    );
+
+    const saturation = await page.locator('aside[aria-label="Node inspector"]').innerText();
+    check('and the inspector reports saturation', /Saturation/.test(saturation));
+
+    // --- auto-layout ---------------------------------------------------------
+    const beforeLayout = await snapshot(page);
+    await page.keyboard.press('Control+l');
+    await page.waitForTimeout(800);
+    state = await snapshot(page);
+    const moved = Object.keys(beforeLayout.positions).filter(
+      (id) =>
+        beforeLayout.positions[id]!.x !== state.positions[id]!.x ||
+        beforeLayout.positions[id]!.y !== state.positions[id]!.y,
+    );
+    check('Ctrl L rearranges the graph', moved.length > 0, `${moved.length} moved`);
+    check(
+      'and does it in one undo step',
+      state.undoDepth === beforeLayout.undoDepth + 1,
+      `${beforeLayout.undoDepth} -> ${state.undoDepth}`,
+    );
+
+    await page.keyboard.press('Control+z');
+    await page.waitForTimeout(200);
+    state = await snapshot(page);
+    check(
+      'one undo restores every position',
+      Object.keys(beforeLayout.positions).every(
+        (id) =>
+          state.positions[id]!.x === beforeLayout.positions[id]!.x &&
+          state.positions[id]!.y === beforeLayout.positions[id]!.y,
+      ),
+    );
+
+    // --- share ---------------------------------------------------------------
+    await page.keyboard.press('Control+s');
+    await page.waitForTimeout(400);
+    const copied = await page.evaluate(() => navigator.clipboard.readText());
+    check('Ctrl S copies a share link', copied.includes('#') && copied.length > 60, `${copied.length} chars`);
+    const toastText = await page.locator('[role="status"]').innerText().catch(() => '');
+    check('and says so', toastText.trim() === 'Link copied', toastText.trim());
+
+    // The link alone must rebuild the graph.
+    const beforeShare = await snapshot(page);
+    await page.evaluate(() => localStorage.clear());
+    await page.goto(copied);
+    await page.waitForTimeout(700);
+    state = await snapshot(page);
+    check(
+      'the link rebuilds the graph with no local storage',
+      state.nodes.length === beforeShare.nodes.length &&
+        state.edges.length === beforeShare.edges.length,
+      `${state.nodes.length} nodes, ${state.edges.length} edges`,
+    );
+
+    // --- export and import ---------------------------------------------------
+    const [download] = await Promise.all([
+      page.waitForEvent('download'),
+      page.keyboard.press('Control+e'),
+    ]);
+    check('Ctrl E downloads a file', download.suggestedFilename().endsWith('.json'), download.suggestedFilename());
+
+    const savedPath = resolve(tmpdir(), `factory-graph-smoke-${Date.now()}.json`);
+    await download.saveAs(savedPath);
+    const savedText = readFileSync(savedPath, 'utf8');
+    const saved = JSON.parse(savedText) as {
+      projectName: string;
+      graph: { nodes: unknown[]; edges: unknown[] };
+    };
+    const live = await snapshot(page);
+    check(
+      'the file holds the whole graph',
+      saved.graph.nodes.length === live.nodes.length &&
+        saved.graph.edges.length === live.edges.length,
+      `${saved.graph.nodes.length} nodes, ${saved.graph.edges.length} edges`,
+    );
+
+    // Wipe everything, then bring it back from the file alone.
+    await page.keyboard.press('Control+a');
+    await page.keyboard.press('Delete');
+    await page.waitForTimeout(200);
+    check('the canvas is empty before importing', (await snapshot(page)).nodes.length === 0);
+
+    const [chooser] = await Promise.all([
+      page.waitForEvent('filechooser'),
+      page.keyboard.press('Control+i'),
+    ]);
+    await chooser.setFiles(savedPath);
+    await page.waitForTimeout(600);
+    state = await snapshot(page);
+    check(
+      'importing the file restores the graph',
+      state.nodes.length === live.nodes.length && state.edges.length === live.edges.length,
+      `${state.nodes.length} nodes, ${state.edges.length} edges`,
+    );
+    unlinkSync(savedPath);
 
     check('no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
     await browser.close();

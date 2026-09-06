@@ -4,6 +4,7 @@ import { useGraphStore } from '../graph/store.ts';
 import type { GraphNode, RecipeNode } from '../graph/types.ts';
 import { useSolve } from '../solver/context.ts';
 import { blockedEffects } from '../solver/rates.ts';
+import { EdgeInspector } from './EdgeInspector.tsx';
 import { NumberField } from './NumberField.tsx';
 import { PickerRow } from './PickerRow.tsx';
 import { Sprite } from './Sprite.tsx';
@@ -11,8 +12,10 @@ import { pollution, power, rate } from './format.ts';
 import styles from './Inspector.module.css';
 
 interface Props {
-  /** Ids currently selected. Empty hides the panel. */
+  /** Node ids currently selected. */
   selection: string[];
+  /** Edge ids currently selected; used only when no node is selected. */
+  selectedEdges: string[];
   onClose: () => void;
 }
 
@@ -21,19 +24,26 @@ interface Props {
  * shows only the fields the selection has in common and applies an edit to
  * every one of them.
  */
-export function Inspector({ selection, onClose }: Props): JSX.Element {
+export function Inspector({ selection, selectedEdges, onClose }: Props): JSX.Element {
   const index = useGameData();
   // Select the stable array and narrow it here: a selector that builds a new
   // array on every store read never settles under useSyncExternalStore.
   const allNodes = useGraphStore((state) => state.graph.nodes);
+  const allEdges = useGraphStore((state) => state.graph.edges);
   const nodes = useMemo(
     () => allNodes.filter((node) => selection.includes(node.id)),
     [allNodes, selection],
   );
+  // A node selection wins: selecting a node also selects nothing else, and
+  // showing both panels at once would be two panels arguing.
+  const edges = useMemo(
+    () => (nodes.length > 0 ? [] : allEdges.filter((edge) => selectedEdges.includes(edge.id))),
+    [allEdges, selectedEdges, nodes.length],
+  );
   const result = useSolve();
   const removeNodes = useGraphStore((state) => state.removeNodes);
 
-  const open = nodes.length > 0;
+  const open = nodes.length > 0 || edges.length > 0;
   const recipes = nodes.filter((node): node is RecipeNode => node.kind === 'recipe');
   const multi = nodes.length > 1;
 
@@ -49,14 +59,21 @@ export function Inspector({ selection, onClose }: Props): JSX.Element {
       {open ? (
         <>
           <div className={styles.head}>
-            <span className={styles.title}>{titleFor(nodes, index)}</span>
+            <span className={styles.title}>
+              {edges.length > 0 ? edgeTitle(edges, index) : titleFor(nodes, index)}
+            </span>
           </div>
+
+          {edges.length > 0 ? <EdgeInspector edges={edges} /> : null}
 
           {recipes.length > 0 ? (
             <RecipeSections nodes={recipes} multi={multi} />
           ) : null}
 
-          {nodes.every((node) => node.kind === 'source' || node.kind === 'sink') ? (
+          {/* `[].every()` is true, so the length check is what stops this
+              rendering when only an edge is selected. */}
+          {nodes.length > 0 &&
+          nodes.every((node) => node.kind === 'source' || node.kind === 'sink') ? (
             <section className={styles.section}>
               <RateConstraint nodes={nodes} />
             </section>
@@ -91,15 +108,26 @@ export function Inspector({ selection, onClose }: Props): JSX.Element {
             </section>
           ) : null}
 
-          <div className={styles.footer}>
-            <button type="button" className={styles.remove} onClick={() => removeNodes(selection)}>
-              Delete {nodes.length === 1 ? 'node' : `${nodes.length} nodes`}
-            </button>
-          </div>
+          {nodes.length > 0 ? (
+            <div className={styles.footer}>
+              <button type="button" className={styles.remove} onClick={() => removeNodes(selection)}>
+                Delete {nodes.length === 1 ? 'node' : `${nodes.length} nodes`}
+              </button>
+            </div>
+          ) : null}
         </>
       ) : null}
     </aside>
   );
+}
+
+function edgeTitle(
+  edges: { fromPort: string }[],
+  index: ReturnType<typeof useGameData>,
+): string {
+  if (edges.length > 1) return `${edges.length} connections`;
+  const itemId = edges[0]?.fromPort ?? '';
+  return index.items.get(itemId)?.name ?? itemId;
 }
 
 function titleFor(nodes: GraphNode[], index: ReturnType<typeof useGameData>): string {

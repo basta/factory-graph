@@ -11,7 +11,10 @@ import {
 } from './graph/store.ts';
 import { emptyGraph, type GraphNode, type Position } from './graph/types.ts';
 import { loadLocal, saveLocal } from './graph/persist.ts';
-import { documentFromLocation } from './graph/url.ts';
+import { clearLocationHash, documentFromLocation, shareUrl } from './graph/url.ts';
+import { exportDocument, importDocument } from './graph/file.ts';
+import { autoLayout } from './graph/layout.ts';
+import { GraphParseError } from './graph/serialize.ts';
 import { Canvas, type DropSearch } from './canvas/Canvas.tsx';
 import { nodeShape } from './canvas/geometry.ts';
 import { Header } from './ui/Header.tsx';
@@ -183,6 +186,50 @@ function Editor({ index }: { index: GameIndex }): JSX.Element {
     [index, search.at, search.connectTo, store],
   );
 
+  // --- project actions -----------------------------------------------------
+  const onShare = useCallback(() => {
+    const actions = store.getState();
+    const url = shareUrl({ graph: actions.graph, projectName: actions.projectName });
+    navigator.clipboard
+      .writeText(url)
+      .then(() => setToast('Link copied'))
+      .catch(() => setToast('Could not reach the clipboard. Copy the address bar instead.'));
+    // Put the graph in the address bar too, so the link is there either way.
+    window.history.replaceState(null, '', url);
+  }, [store]);
+
+  const onExport = useCallback(() => {
+    const actions = store.getState();
+    exportDocument({ graph: actions.graph, projectName: actions.projectName });
+  }, [store]);
+
+  const onImport = useCallback(() => {
+    importDocument()
+      .then((doc) => {
+        if (!doc) return;
+        store.getState().load(doc);
+        // The old link no longer describes what is on screen.
+        clearLocationHash();
+        setToast(`Opened ${doc.projectName}`);
+        requestAnimationFrame(() => void flow.fitView({ padding: 0.25, duration: 0 }));
+      })
+      .catch((error: unknown) => {
+        setToast(error instanceof GraphParseError ? error.message : 'That file could not be read.');
+      });
+  }, [flow, store]);
+
+  const onLayout = useCallback(() => {
+    const actions = store.getState();
+    autoLayout(actions.graph, index)
+      .then((positions) => {
+        if (Object.keys(positions).length === 0) return;
+        // One undo step for the whole rearrangement.
+        store.getState().setPositions(positions);
+        requestAnimationFrame(() => void flow.fitView({ padding: 0.2, duration: 120 }));
+      })
+      .catch(() => setToast('Auto-layout failed. The graph is unchanged.'));
+  }, [flow, index, store]);
+
   // --- keyboard ------------------------------------------------------------
   useEffect(() => {
     const onKey = (event: KeyboardEvent): void => {
@@ -221,6 +268,18 @@ function Editor({ index }: { index: GameIndex }): JSX.Element {
           actions.graph.nodes.map((node) => node.id),
           actions.graph.edges.map((edge) => edge.id),
         );
+      } else if (control && event.key.toLowerCase() === 's') {
+        event.preventDefault();
+        onShare();
+      } else if (control && event.key.toLowerCase() === 'e') {
+        event.preventDefault();
+        onExport();
+      } else if (control && event.key.toLowerCase() === 'i') {
+        event.preventDefault();
+        onImport();
+      } else if (control && event.key.toLowerCase() === 'l') {
+        event.preventDefault();
+        onLayout();
       } else if (control && event.key === '0') {
         event.preventDefault();
         void flow.fitView({ padding: 0.2, duration: 120 });
@@ -255,12 +314,20 @@ function Editor({ index }: { index: GameIndex }): JSX.Element {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [flow, helpOpen, openSearchAtCentre, search.open, store]);
+  }, [
+    flow,
+    helpOpen,
+    onExport,
+    onImport,
+    onLayout,
+    onShare,
+    openSearchAtCentre,
+    search.open,
+    store,
+  ]);
 
   const past = useGraphStore((state) => state.history.past.length);
   const future = useGraphStore((state) => state.history.future.length);
-
-  const notYet = useCallback(() => setToast('Not wired up yet.'), []);
 
   return (
     <div className={styles.app}>
@@ -272,10 +339,10 @@ function Editor({ index }: { index: GameIndex }): JSX.Element {
         canRedo={future > 0}
         onUndo={store.getState().undo}
         onRedo={store.getState().redo}
-        onLayout={notYet}
-        onShare={notYet}
-        onExport={notYet}
-        onImport={notYet}
+        onLayout={onLayout}
+        onShare={onShare}
+        onExport={onExport}
+        onImport={onImport}
         onHelp={() => setHelpOpen(true)}
       />
       <div className={styles.body}>
@@ -287,7 +354,8 @@ function Editor({ index }: { index: GameIndex }): JSX.Element {
           />
           <Inspector
             selection={selection}
-            onClose={() => store.getState().setSelection([], selectedEdges)}
+            selectedEdges={selectedEdges}
+            onClose={() => store.getState().setSelection([], [])}
           />
         </SolveProvider>
       </div>

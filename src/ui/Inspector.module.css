@@ -209,3 +209,45 @@
 .remove:hover {
   color: var(--warn);
 }
+
+.valueWarn {
+  color: var(--warn);
+}
+
+.note {
+  margin: 4px 0 0;
+  color: var(--warn);
+}
+
+/* A two- or three-way choice, drawn as one control rather than three buttons. */
+.segmented {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.segment {
+  flex: 1;
+  min-width: 0;
+  height: 22px;
+  color: var(--ink-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.segment + .segment {
+  border-left: 1px solid var(--line);
+}
+
+.segment:hover {
+  color: var(--ink);
+}
+
+.segmentOn {
+  background: var(--panel-raised);
+  color: var(--ink);
+}

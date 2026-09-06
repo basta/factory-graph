@@ -173,6 +173,37 @@ const FIXTURES: Record<string, { projectName: string; graph: Graph }> = {
     ),
   },
 
+  /** A wider chain, deliberately laid out badly so auto-layout has work to do. */
+  tangle: {
+    projectName: 'Red science',
+    graph: build(
+      [
+        recipe('ore', 'iron-ore-mining', 'electric-mining-drill', { x: 700, y: 500 }),
+        recipe('cuOre', 'copper-ore-mining', 'electric-mining-drill', { x: 120, y: 640 }),
+        recipe('plate', 'iron-plate', 'electric-furnace', { x: 260, y: 60 }),
+        recipe('cuPlate', 'copper-plate', 'electric-furnace', { x: 900, y: 120 }),
+        recipe('gear', 'iron-gear-wheel', 'assembling-machine-3', { x: 40, y: 300 }),
+        recipe('cable', 'copper-cable', 'assembling-machine-2', { x: 640, y: 40 }),
+        recipe('circuit', 'electronic-circuit', 'assembling-machine-3', { x: 320, y: 420 }),
+        recipe('science', 'automation-science-pack', 'assembling-machine-3', { x: 880, y: 380 }),
+        sink('out', 'automation-science-pack', { x: 500, y: 700 }, 5),
+        sink('chips', 'electronic-circuit', { x: 60, y: 760 }, 10),
+      ],
+      [
+        link('ore', 'plate', 'iron-ore'),
+        link('cuOre', 'cuPlate', 'copper-ore'),
+        link('plate', 'gear', 'iron-plate'),
+        link('plate', 'circuit', 'iron-plate'),
+        link('cuPlate', 'cable', 'copper-plate'),
+        link('cable', 'circuit', 'copper-cable'),
+        link('gear', 'science', 'iron-gear-wheel'),
+        link('cuPlate', 'science', 'copper-plate'),
+        link('science', 'out', 'automation-science-pack'),
+        link('circuit', 'chips', 'electronic-circuit'),
+      ],
+    ),
+  },
+
   /** Modules, beacons and a foundry, to see a dense node. */
   beacons: {
     projectName: 'Beaconed smelting',
