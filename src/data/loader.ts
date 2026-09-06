@@ -1,3 +1,4 @@
+import { assetUrl } from './assetUrl.ts';
 import { gameDataSchema } from './schema.ts';
 import type {
   Beacon,
@@ -67,7 +68,7 @@ export function indexGameData(data: GameData): GameIndex {
 
 /** Fetches and zod-validates a vendored data set. */
 export async function loadGameData(setId = DEFAULT_DATA_SET): Promise<GameIndex> {
-  const response = await fetch(`${import.meta.env.BASE_URL}data/${setId}.json`);
+  const response = await fetch(assetUrl(`data/${setId}.json`));
   if (!response.ok) {
     throw new Error(`Could not load data set "${setId}" (${response.status}).`);
   }

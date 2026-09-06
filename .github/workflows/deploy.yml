@@ -33,7 +33,9 @@ jobs:
       # The Pages build is served from /<repo>/, so prove it works there.
       - run: npm run build
         env:
-          BASE_PATH: /factory-graph/
+          # No trailing slash, matching what configure-pages hands the deploy
+          # job. That difference 404'd the data set on the first live deploy.
+          BASE_PATH: /factory-graph
       - run: npm run check:base
 
   deploy:

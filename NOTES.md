@@ -424,13 +424,44 @@ machine, the same figure the easier fixture used to report.
 
 ### A wall-clock assertion cannot mean the same thing on a shared runner
 
-CI failed at **14.5 ms** against the 10 ms budget. GitHub's runner is two slow
-shared cores and measures around three times higher than this machine — the code
-was not slow, the yardstick was.
+CI failed at **14.5 ms** against the 10 ms budget on the old fixture. With the
+slack pruning above, the harder honest graph now measures **8.96 ms on the same
+runner** — so the code was genuinely worth speeding up, and most of the original
+failure was real rather than environmental.
 
-The 10 ms in the spec is about an edit feeling instant on hardware someone
-actually uses, so that is where it is still enforced. CI gets a 30 ms ceiling:
-loose enough not to flake on a noisy shared box, tight enough that a genuine 2x
-regression trips it. Both paths print the measured median, so a slide shows up
-in the log before it breaks anything. The alternative — quietly relaxing the
-number everywhere — would have kept CI green while throwing away the guarantee.
+It still gets a separate ceiling, because 8.96 ms leaves only a tenth of the
+budget as headroom and a shared runner varies by more than that between runs —
+enforcing 10 ms there would flake on hardware no user has. The 10 ms in the spec
+is about an edit feeling instant on a machine someone actually uses, so that is
+where it stays enforced; CI gets 30 ms, which still trips on a genuine 2x
+regression. Both paths print the measured median, so a slide shows up in the log
+before it breaks anything. The alternative — quietly relaxing the number
+everywhere — would have kept CI green while throwing away the guarantee.
+
+### The deploy check was checking the wrong string
+
+The site went live and immediately failed: `404
+https://basta.github.io/factory-graphdata/2x1.json`. A missing slash.
+
+`check:base` had passed, and passed for a bad reason. It ran `vite preview
+--base /factory-graph/` with a trailing slash I had typed myself, so
+`BASE_URL` came out slash-terminated and `${BASE_URL}data/…` happened to work.
+GitHub Pages' `configure-pages` action hands the deploy job a `base_path` of
+`/factory-graph` **without** one. The deploy job built with GitHub's value; my
+check built with mine; they disagreed by one character and only the real deploy
+found out.
+
+Three fixes, because one would have left the trap set:
+
+- `assetUrl()` joins `BASE_URL` to a path with exactly one slash regardless of
+  what either side ends or starts with, and is now the only thing in the app
+  that touches `BASE_URL`. Six unit tests cover both shapes.
+- `check:base` previews with `/factory-graph`, no trailing slash — the shape
+  that actually broke.
+- The workflow's check job builds with the same un-slashed value the deploy job
+  uses, so the two can no longer drift.
+
+The app failed *loudly* rather than silently, which is the one thing that went
+right: `loadGameData` throws on a non-ok response and the error state says
+"Could not load data set (404)" instead of rendering an empty canvas that looks
+like a fresh project.

@@ -11,7 +11,13 @@ import { spawn } from 'node:child_process';
 import { chromium } from 'playwright';
 
 const PORT = 4325;
-const BASE = '/factory-graph/';
+/**
+ * Deliberately without a trailing slash: that is what GitHub Pages'
+ * `configure-pages` action puts in `base_path`, and it is the shape that broke
+ * the first live deploy. Vite serves it either way.
+ */
+const BASE_PATH = '/factory-graph';
+const BASE = `${BASE_PATH}/`;
 
 interface StoreWindow {
   __factoryGraph?: { getState: () => { graph: { nodes: unknown[] } } };
@@ -20,7 +26,7 @@ interface StoreWindow {
 async function main(): Promise<void> {
   const preview = spawn(
     process.platform === 'win32' ? 'npx.cmd' : 'npx',
-    ['vite', 'preview', '--base', BASE, '--port', String(PORT), '--strictPort'],
+    ['vite', 'preview', '--base', BASE_PATH, '--port', String(PORT), '--strictPort'],
     { stdio: 'ignore', shell: process.platform === 'win32' },
   );
 
