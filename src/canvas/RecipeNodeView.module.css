@@ -1,0 +1,130 @@
+.node {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  background: var(--panel);
+  border: 2px solid var(--line);
+  border-radius: var(--radius);
+  /* No overflow clipping: handles deliberately sit half outside the border.
+     No shadow, ever — see DESIGN.md. */
+}
+
+.selected {
+  border-color: var(--copper);
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  flex: none;
+  padding: 0 6px;
+  background: var(--panel-raised);
+  border-radius: 1px 1px 0 0;
+}
+
+.title {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--size-title);
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.machine {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex: none;
+}
+
+.count {
+  color: var(--ink);
+  border-bottom: 1px solid transparent;
+}
+
+/* The one affordance saying "this count is the user's, not the solver's". */
+.pinned {
+  border-bottom-color: var(--copper);
+}
+
+.modules {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  height: 22px;
+  flex: none;
+  padding: 0 6px 4px;
+  background: var(--panel-raised);
+}
+
+.slotFilled,
+.slotEmpty {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  border-radius: 1px;
+}
+
+.slotEmpty {
+  border: 1px solid var(--line);
+}
+
+.beacons {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  margin-left: auto;
+  color: var(--ink-muted);
+}
+
+.body {
+  display: flex;
+  flex: 1;
+  padding: 5px 0;
+}
+
+.column {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+}
+
+.right {
+  text-align: right;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  height: 18px;
+  padding: 0 7px;
+}
+
+.right .row {
+  flex-direction: row-reverse;
+}
+
+.rate {
+  flex: none;
+  color: var(--brass);
+}
+
+.rateWarn {
+  color: var(--warn);
+}
+
+.itemName {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--size-port);
+  color: var(--ink-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

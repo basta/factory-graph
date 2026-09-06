@@ -129,3 +129,81 @@ grid, which is correct at any column count.
 Sprite rendering has no on-screen surface yet at M1 (the empty canvas shows no game
 icons), so it is covered by `src/data/sprite.test.ts` for the offset and scaling maths
 and will be confirmed visually in M2 when nodes appear.
+
+## M2 — Place and connect
+
+### Three bugs the screenshots and the smoke test caught
+
+**React error #185 on the first node.** A zustand selector that builds a new
+array on every read (`state.graph.nodes.filter(...)` in the inspector) never
+settles under `useSyncExternalStore` — React re-renders, the selector returns a
+fresh array, React re-renders. Fixed by selecting the stable `nodes` array and
+narrowing it in a `useMemo`. Two store setters got the same treatment:
+`setSelection` and `moveNodes` now ignore writes that change nothing, because
+React Flow reports the current selection and position back to us after every
+render and a fresh object each time is the same infinite loop.
+
+**Clicking a node did nothing.** React Flow is fully controlled here, so it does
+not apply selection itself — it emits `select` changes and expects the host to.
+Dropping those in `onNodesChange` meant selection only ever changed when the app
+set it programmatically, which is why creating a node opened the inspector but
+clicking one did not. `onNodesChange` and a new `onEdgesChange` now apply
+`select` and `remove` changes to the store.
+
+**Nodes clipped their own handles.** `overflow: hidden` on the node made the
+rounded corners tidy and cut the handles in half — and handles sitting half
+outside the border is the whole point of them. Removed the clip and gave the
+header band its own top radius instead.
+
+Two smaller ones: the initial `fitView` never ran, because it fired on the first
+render while the store still held the empty graph. Rather than chase
+`useNodesInitialized`, the document is now restored *before* the editor mounts,
+so React Flow's own `fitView` prop does the job. And `lz-string` is CommonJS
+with no named exports, so Node's ESM loader could not import
+`compressToEncodedURIComponent` by name — the fixture script found that, not the
+browser, where Vite's interop hides it.
+
+### Choices
+
+- **`onConnectEnd` reads React Flow's `connectionState`**, not the event target's
+  class list. The first attempt sniffed for `.react-flow__pane` to decide
+  whether a drag had landed on empty canvas; `connectionState.fromHandle` and
+  `connectionState.toNode` say so directly and survive any DOM change upstream.
+- **Quality modules are left out of both pickers.** Quality is a v1 non-goal, so
+  the only thing a quality module would do in this model is impose a speed
+  penalty. Offering it would be a trap.
+- **`__factoryGraph` on `window`** exposes the store read-only for
+  `scripts/smoke.ts`. Asserting against the real document beats scraping the DOM
+  for what the graph contains, and it exposes nothing the UI does not show.
+- The empty-state, search and inspector were all reached by keyboard first; the
+  smoke test drives Ctrl K, arrow keys and Enter rather than clicking, which is
+  the keyboard-first claim actually being exercised.
+
+### Screenshots
+
+`shots/m2-search.png` — the palette over an empty canvas. Match highlighting in
+`--copper` reads well against the muted rows; the producing machine on the right
+is the detail that makes two same-named rows distinguishable. Nothing changed
+after looking at it.
+
+`shots/m2-chain.png` — the four-node green-circuit chain. First version had the
+graph jammed into the top-left corner (the fitView bug) and the handles sliced in
+half (the overflow bug). After both fixes the chain reads left to right with
+ports where the edges land. The `—` placeholders sit where the numbers will go in
+M3.
+
+`shots/m2-inspector.png` — a foundry with four productivity modules, selected.
+Confirmed: the copper selection border with no glow, the copper underline under
+the pinned machine count, the minimap picking the selection out in copper, and
+fluids rendering in `--fluid` with round handles and a 3px path while the item
+edge next to it is 2px `--line` with a square handle. The source/sink node was
+redrawn after the first pass: it had "Source" as its title and the item name
+buried in the body, which wasted the one line that should name the node. Now the
+item names the node and "source"/"sink" is the muted qualifier.
+
+### Interaction coverage
+
+`npm run smoke` drives the built app through 20 checks that unit tests cannot
+reach: port-to-port drags, the drop-on-blank-canvas search and its pre-filter, a
+mismatched port refusing, click-to-select, Ctrl Z/Shift Z, Ctrl D, Delete, and
+survival of a reload. It fails the build if any of them regress.

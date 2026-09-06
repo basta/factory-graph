@@ -1,0 +1,29 @@
+.minimap {
+  position: absolute;
+  left: 10px;
+  bottom: 10px;
+  z-index: 5;
+  width: 168px;
+  height: 108px;
+  background: var(--bg-canvas);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.node {
+  fill: var(--panel-raised);
+  stroke: var(--line);
+  stroke-width: 1;
+}
+
+.selected {
+  fill: var(--copper);
+  stroke: var(--copper);
+}
+
+.viewport {
+  fill: none;
+  stroke: var(--ink-muted);
+  stroke-width: 1;
+}

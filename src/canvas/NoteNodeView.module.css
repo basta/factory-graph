@@ -1,0 +1,24 @@
+.node {
+  display: flex;
+  padding: 7px 9px;
+  background: var(--panel);
+  border: 2px solid var(--line);
+  border-radius: var(--radius);
+}
+
+.selected {
+  border-color: var(--copper);
+}
+
+.text {
+  width: 100%;
+  resize: none;
+  color: var(--ink-muted);
+  font-size: var(--size-ui);
+  line-height: 1.4;
+  overflow: hidden;
+}
+
+.text::placeholder {
+  color: var(--line);
+}

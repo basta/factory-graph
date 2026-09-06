@@ -12,7 +12,8 @@
     "test:watch": "vitest",
     "data:import": "tsx scripts/import-factoriolab.ts",
     "shot": "tsx scripts/shot.ts",
-    "data:fetch": "tsx scripts/fetch-factoriolab.ts"
+    "data:fetch": "tsx scripts/fetch-factoriolab.ts",
+    "smoke": "tsx scripts/smoke.ts"
   },
   "dependencies": {
     "@xyflow/react": "^12.11.6",

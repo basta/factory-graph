@@ -1,0 +1,70 @@
+.path {
+  stroke-width: 2;
+  fill: none;
+}
+
+.fluidWidth {
+  stroke-width: 3;
+}
+
+.line {
+  stroke: var(--line);
+}
+.brass {
+  stroke: var(--brass);
+}
+.fluid {
+  stroke: var(--fluid);
+}
+.warn {
+  stroke: var(--warn);
+}
+
+.hitArea {
+  stroke: transparent;
+  stroke-width: 14;
+  fill: none;
+}
+
+:global(.react-flow__edge:hover) .line {
+  stroke: var(--brass);
+}
+
+.label {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 1px 5px 2px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  color: var(--brass);
+  pointer-events: none;
+}
+
+.labelWarn {
+  color: var(--warn);
+  border-color: var(--warn);
+}
+
+.bar {
+  display: block;
+  height: 2px;
+  background: var(--line);
+  overflow: hidden;
+}
+
+.barFill {
+  display: block;
+  height: 100%;
+  background: currentColor;
+}
+
+/* Marker definitions only; the element itself paints nothing. */
+.markerHost {
+  position: absolute;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+}

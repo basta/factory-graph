@@ -1,0 +1,61 @@
+.node {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  background: var(--panel);
+  border: 2px solid var(--line);
+  border-radius: var(--radius);
+  /* No overflow clipping: handles deliberately sit half outside the border. */
+}
+
+.selected {
+  border-color: var(--copper);
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  flex: none;
+  padding: 0 8px;
+  background: var(--panel-raised);
+  border-radius: 1px 1px 0 0;
+}
+
+.title {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--size-title);
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.body {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex: 1;
+  padding: 0 8px;
+}
+
+.kind {
+  flex: none;
+  font-size: var(--size-port);
+  color: var(--ink-muted);
+}
+
+.rate {
+  flex: none;
+  color: var(--brass);
+  border-bottom: 1px solid transparent;
+}
+
+.pinned {
+  border-bottom-color: var(--copper);
+}
+
+

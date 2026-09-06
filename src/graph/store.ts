@@ -64,6 +64,10 @@ interface Actions {
 
 export type GraphStore = GraphState & Actions;
 
+function sameIds(a: readonly string[], b: readonly string[]): boolean {
+  return a.length === b.length && a.every((id, i) => id === b[i]);
+}
+
 function snapshot(state: GraphState): GraphDocument {
   return { graph: structuredClone(state.graph), projectName: state.projectName };
 }
@@ -236,10 +240,23 @@ export const useGraphStore = create<GraphStore>()((set, get) => {
     },
 
     moveNodes(moves, transient) {
-      set((state) => ({
-        graph: { ...state.graph, positions: { ...state.graph.positions, ...moves } },
-        history: transient ? state.history : history.push(state.history, snapshot(state)),
-      }));
+      set((state) => {
+        // React Flow re-emits the current position on every render pass. Writing
+        // it back unchanged would produce a new graph object, re-render the
+        // canvas, and emit it again — an endless loop.
+        const changed = Object.entries(moves).filter(([id, position]) => {
+          const current = state.graph.positions[id];
+          return !current || current.x !== position.x || current.y !== position.y;
+        });
+        if (changed.length === 0) return {};
+        return {
+          graph: {
+            ...state.graph,
+            positions: { ...state.graph.positions, ...Object.fromEntries(changed) },
+          },
+          history: transient ? state.history : history.push(state.history, snapshot(state)),
+        };
+      });
     },
 
     setPositions(positions) {
@@ -281,7 +298,12 @@ export const useGraphStore = create<GraphStore>()((set, get) => {
     canRedo: () => get().history.future.length > 0,
 
     setSelection(nodes, edges) {
-      set({ selection: nodes, selectedEdges: edges });
+      set((state) => {
+        // Same reason as `moveNodes`: React Flow reports the selection back to
+        // us after every render, and a fresh array each time would loop.
+        if (sameIds(state.selection, nodes) && sameIds(state.selectedEdges, edges)) return {};
+        return { selection: nodes, selectedEdges: edges };
+      });
     },
   };
 });
@@ -315,4 +337,11 @@ export function makeSinkNode(itemId: string): GraphNode {
 
 export function makeNoteNode(text = ''): GraphNode {
   return { id: newId('n'), kind: 'note', text };
+}
+
+// A read-only handle on the store for the Playwright smoke test. It exposes
+// nothing that the UI does not already show, and asserting against the real
+// document beats scraping the DOM for it.
+if (typeof window !== 'undefined') {
+  (window as unknown as { __factoryGraph: typeof useGraphStore }).__factoryGraph = useGraphStore;
 }

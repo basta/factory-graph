@@ -1,5 +1,9 @@
 import { z } from 'zod';
-import { compressToEncodedURIComponent, decompressFromEncodedURIComponent } from 'lz-string';
+import lzString from 'lz-string';
+
+// lz-string ships as CommonJS with no named exports, so Node's ESM loader
+// cannot see them. Taking them off the default works in both Vite and Node.
+const { compressToEncodedURIComponent, decompressFromEncodedURIComponent } = lzString;
 import type { Graph } from './types.ts';
 
 /**

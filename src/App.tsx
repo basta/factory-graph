@@ -1,11 +1,24 @@
 import { useCallback, useEffect, useState } from 'react';
-import { ReactFlowProvider } from '@xyflow/react';
+import { ReactFlowProvider, useReactFlow } from '@xyflow/react';
 import { GameDataProvider } from './data/context.ts';
 import { loadGameData, type GameIndex } from './data/loader.ts';
-import { useGraphStore } from './graph/store.ts';
-import { Canvas } from './canvas/Canvas.tsx';
+import {
+  makeNoteNode,
+  makeRecipeNode,
+  makeSinkNode,
+  makeSourceNode,
+  useGraphStore,
+} from './graph/store.ts';
+import { emptyGraph, type GraphNode, type Position } from './graph/types.ts';
+import { loadLocal, saveLocal } from './graph/persist.ts';
+import { documentFromLocation } from './graph/url.ts';
+import { Canvas, type DropSearch } from './canvas/Canvas.tsx';
+import { nodeShape } from './canvas/geometry.ts';
 import { Header } from './ui/Header.tsx';
+import { Inspector } from './ui/Inspector.tsx';
+import { Search, type SearchChoice, type SearchIntent } from './ui/Search.tsx';
 import { ShortcutsOverlay } from './ui/ShortcutsOverlay.tsx';
+import { Toast } from './ui/Toast.tsx';
 import { isTyping } from './ui/keys.ts';
 import styles from './App.module.css';
 
@@ -17,7 +30,16 @@ export function App(): JSX.Element {
     let live = true;
     loadGameData()
       .then((loaded) => {
-        if (live) setIndex(loaded);
+        if (!live) return;
+        // Restore before the canvas first renders, so React Flow's own
+        // `fitView` has a graph to frame. A link beats the autosave.
+        const doc = documentFromLocation() ?? loadLocal();
+        useGraphStore
+          .getState()
+          .load(
+            doc ?? { graph: emptyGraph(loaded.data.id), projectName: 'Untitled factory' },
+          );
+        setIndex(loaded);
       })
       .catch((error: unknown) => {
         if (live) setLoadError(error instanceof Error ? error.message : String(error));
@@ -40,46 +62,206 @@ export function App(): JSX.Element {
   return (
     <GameDataProvider value={index}>
       <ReactFlowProvider>
-        <Editor />
+        <Editor index={index} />
       </ReactFlowProvider>
     </GameDataProvider>
   );
 }
 
-function Editor(): JSX.Element {
+interface SearchState {
+  open: boolean;
+  intent: SearchIntent;
+  /** Graph position for the new node. */
+  at: Position;
+  /** Set when the palette was opened by dragging an edge into blank space. */
+  connectTo: { nodeId: string; itemId: string; fromSide: 'in' | 'out' } | null;
+}
+
+const CLOSED: SearchState = {
+  open: false,
+  intent: { kind: 'anything' },
+  at: { x: 0, y: 0 },
+  connectTo: null,
+};
+
+function Editor({ index }: { index: GameIndex }): JSX.Element {
+  const flow = useReactFlow();
   const [helpOpen, setHelpOpen] = useState(false);
+  const [search, setSearch] = useState<SearchState>(CLOSED);
+  const [toast, setToast] = useState<string | null>(null);
 
-  const nodeCount = useGraphStore((state) => state.graph.nodes.length);
+  const graph = useGraphStore((state) => state.graph);
   const projectName = useGraphStore((state) => state.projectName);
-  const setProjectName = useGraphStore((state) => state.setProjectName);
-  const past = useGraphStore((state) => state.history.past.length);
-  const future = useGraphStore((state) => state.history.future.length);
-  const undo = useGraphStore((state) => state.undo);
-  const redo = useGraphStore((state) => state.redo);
+  const selection = useGraphStore((state) => state.selection);
+  const selectedEdges = useGraphStore((state) => state.selectedEdges);
+  const store = useGraphStore;
 
-  const notYet = useCallback(() => undefined, []);
+  // --- autosave ------------------------------------------------------------
+  // The document is already in the store by the time this component mounts.
+  useEffect(() => {
+    saveLocal({ graph, projectName });
+  }, [graph, projectName]);
 
+  // --- adding nodes --------------------------------------------------------
+  const openSearchAtScreen = useCallback(
+    (screen: { x: number; y: number }, intent: SearchIntent, connectTo: SearchState['connectTo']) => {
+      setSearch({
+        open: true,
+        intent,
+        at: flow.screenToFlowPosition(screen),
+        connectTo,
+      });
+    },
+    [flow],
+  );
+
+  const openSearchAtCentre = useCallback(() => {
+    const rect = document.querySelector('.react-flow')?.getBoundingClientRect();
+    const screen = rect
+      ? { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 }
+      : { x: window.innerWidth / 2, y: window.innerHeight / 2 };
+    openSearchAtScreen(screen, { kind: 'anything' }, null);
+  }, [openSearchAtScreen]);
+
+  const onDropSearch = useCallback(
+    (drop: DropSearch) => {
+      openSearchAtScreen(
+        drop.screen,
+        // Dragging out of an output looks for something that consumes it.
+        drop.fromSide === 'out'
+          ? { kind: 'consumes', itemId: drop.itemId }
+          : { kind: 'produces', itemId: drop.itemId },
+        { nodeId: drop.nodeId, itemId: drop.itemId, fromSide: drop.fromSide },
+      );
+    },
+    [openSearchAtScreen],
+  );
+
+  const onChoose = useCallback(
+    (choice: SearchChoice) => {
+      const node: GraphNode | null =
+        choice.kind === 'recipe'
+          ? makeRecipeNode(index, choice.recipeId)
+          : choice.kind === 'source'
+            ? makeSourceNode(choice.itemId)
+            : makeSinkNode(choice.itemId);
+      if (!node) {
+        setToast('That recipe has no machine that can make it.');
+        setSearch(CLOSED);
+        return;
+      }
+
+      const shape = nodeShape(node, index);
+      // Drop the node so the cursor lands on it, not on its top-left corner.
+      const at = { x: search.at.x - shape.width / 2, y: search.at.y - 20 };
+
+      const actions = store.getState();
+      actions.beginBatch();
+      actions.addNode(node, at);
+      const link = search.connectTo;
+      if (link) {
+        actions.addEdge(
+          link.fromSide === 'out'
+            ? { from: link.nodeId, fromPort: link.itemId, to: node.id, toPort: link.itemId, transport: null }
+            : { from: node.id, fromPort: link.itemId, to: link.nodeId, toPort: link.itemId, transport: null },
+        );
+      }
+      actions.endBatch();
+      actions.setSelection([node.id], []);
+      setSearch(CLOSED);
+    },
+    [index, search.at, search.connectTo, store],
+  );
+
+  // --- keyboard ------------------------------------------------------------
   useEffect(() => {
     const onKey = (event: KeyboardEvent): void => {
-      if (event.key === '?' && !isTyping(event.target)) {
+      const typing = isTyping(event.target);
+      const actions = store.getState();
+      const control = event.ctrlKey || event.metaKey;
+
+      if (event.key === 'Escape') {
+        if (search.open) setSearch(CLOSED);
+        else if (helpOpen) setHelpOpen(false);
+        else actions.setSelection([], []);
+        return;
+      }
+      if (typing) return;
+
+      if (event.key === '?') {
         event.preventDefault();
         setHelpOpen((open) => !open);
+      } else if (control && event.key.toLowerCase() === 'k') {
+        event.preventDefault();
+        openSearchAtCentre();
+      } else if (control && event.key.toLowerCase() === 'z') {
+        event.preventDefault();
+        if (event.shiftKey) actions.redo();
+        else actions.undo();
+      } else if (control && event.key.toLowerCase() === 'y') {
+        event.preventDefault();
+        actions.redo();
+      } else if (control && event.key.toLowerCase() === 'd') {
+        event.preventDefault();
+        const copies = actions.duplicateNodes(actions.selection);
+        if (copies.length > 0) actions.setSelection(copies, []);
+      } else if (control && event.key.toLowerCase() === 'a') {
+        event.preventDefault();
+        actions.setSelection(
+          actions.graph.nodes.map((node) => node.id),
+          actions.graph.edges.map((edge) => edge.id),
+        );
+      } else if (control && event.key === '0') {
+        event.preventDefault();
+        void flow.fitView({ padding: 0.2, duration: 120 });
+      } else if (event.key === 'Delete' || event.key === 'Backspace') {
+        event.preventDefault();
+        actions.beginBatch();
+        actions.removeEdges(actions.selectedEdges);
+        actions.removeNodes(actions.selection);
+        actions.endBatch();
+        actions.setSelection([], []);
+      } else if (event.key.toLowerCase() === 'f' && !control) {
+        // Pin or unpin every selected recipe node at its solved count.
+        const nodes = actions.graph.nodes.filter((node) => actions.selection.includes(node.id));
+        if (nodes.length === 0) return;
+        event.preventDefault();
+        actions.beginBatch();
+        for (const node of nodes) {
+          if (node.kind === 'recipe') {
+            actions.setConstraint(
+              node.id,
+              node.constraint.type === 'machines' ? { type: 'free' } : { type: 'machines', count: 1 },
+            );
+          } else if (node.kind === 'source' || node.kind === 'sink') {
+            actions.setConstraint(
+              node.id,
+              node.constraint.type === 'rate' ? { type: 'free' } : { type: 'rate', perSec: 1 },
+            );
+          }
+        }
+        actions.endBatch();
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, []);
+  }, [flow, helpOpen, openSearchAtCentre, search.open, store]);
+
+  const past = useGraphStore((state) => state.history.past.length);
+  const future = useGraphStore((state) => state.history.future.length);
+
+  const notYet = useCallback(() => setToast('Not wired up yet.'), []);
 
   return (
     <div className={styles.app}>
       <Header
         projectName={projectName}
-        onProjectNameChange={setProjectName}
+        onProjectNameChange={store.getState().setProjectName}
         result={null}
         canUndo={past > 0}
         canRedo={future > 0}
-        onUndo={undo}
-        onRedo={redo}
+        onUndo={store.getState().undo}
+        onRedo={store.getState().redo}
         onLayout={notYet}
         onShare={notYet}
         onExport={notYet}
@@ -87,9 +269,27 @@ function Editor(): JSX.Element {
         onHelp={() => setHelpOpen(true)}
       />
       <div className={styles.body}>
-        <Canvas empty={nodeCount === 0} />
+        <Canvas
+          empty={graph.nodes.length === 0}
+          onAddAt={(screen) => openSearchAtScreen(screen, { kind: 'anything' }, null)}
+          onDropSearch={onDropSearch}
+        />
+        <Inspector
+          selection={selection}
+          onClose={() => store.getState().setSelection([], selectedEdges)}
+        />
       </div>
+      <Search
+        open={search.open}
+        intent={search.intent}
+        onClose={() => setSearch(CLOSED)}
+        onChoose={onChoose}
+      />
       <ShortcutsOverlay open={helpOpen} onClose={() => setHelpOpen(false)} />
+      <Toast message={toast} onDismiss={() => setToast(null)} />
     </div>
   );
 }
+
+/** Kept for the note node's toolbar entry in M5. */
+export const NOTE_FACTORY = makeNoteNode;

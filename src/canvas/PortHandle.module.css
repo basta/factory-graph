@@ -1,0 +1,41 @@
+/* Half outside the node border: 10px wide, shifted 5px past the edge. */
+.handle {
+  width: 10px;
+  height: 10px;
+  border: none;
+  transform: translateY(-50%);
+  transition: box-shadow 120ms linear;
+}
+
+.handle:global(.react-flow__handle-left) {
+  left: -6px;
+}
+
+.handle:global(.react-flow__handle-right) {
+  right: -6px;
+}
+
+.item {
+  background: var(--brass);
+  border-radius: 1px;
+}
+
+.fluid {
+  background: var(--fluid);
+  border-radius: 50%;
+}
+
+/* The ring, not a fill change, so the item/fluid distinction survives. */
+.warn {
+  box-shadow: 0 0 0 2px var(--warn);
+}
+
+/* During a drag: a port that cannot take the item says so. */
+.rejects {
+  box-shadow: 0 0 0 2px var(--warn);
+  opacity: 0.55;
+}
+
+.accepts {
+  box-shadow: 0 0 0 2px var(--copper);
+}
