@@ -14,7 +14,7 @@ Static site, no backend. Factorio 2.0 base + Space Age.
 npm install
 npm run dev          # http://localhost:5173
 npm run build        # type-check and build to dist/
-npm test             # unit tests: solver, store, serializer, layout, data
+npm test             # unit tests: solver, store, serializer, library, layout, data
 npm run smoke        # drives the built app in a real browser (needs `build` first)
 npm run check        # lint + test + build + smoke, what CI runs
 npm run shot -- name # screenshot the built app into shots/
@@ -22,8 +22,8 @@ npm run shot -- name # screenshot the built app into shots/
 
 `npm test` covers everything that is a pure function. `npm run smoke` covers what
 is not: port-to-port drags, the drop-on-empty-canvas search, click-to-select,
-the clipboard, a real file download and re-import, auto-layout, and the
-reduced-motion path. Both run in CI.
+the clipboard, a real file download and re-import, auto-layout, switching
+between saved plans, and the reduced-motion path. Both run in CI.
 
 To poke at a specific graph, `npx tsx scripts/make-fixture.ts <name>` prints a
 share hash you can paste after the `#` — `green-circuits`, `unbalanced`,
@@ -59,7 +59,7 @@ the site lives at `/<repo>/`.
 src/
   data/     GameData types, zod schema, loader, sprite lookup
   solver/   rates.ts (formulas), lp.ts (LP build), index.ts (solve), tests
-  graph/    zustand store, history, serializer, url
+  graph/    zustand store, history, serializer, url, saved-plan library
   canvas/   React Flow setup and custom nodes, edges, handles, grid
   ui/       Header, Inspector, Search, Toast, ShortcutsOverlay
   tokens.css

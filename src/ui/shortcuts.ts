@@ -47,6 +47,7 @@ export const SHORTCUTS: { group: string; items: Shortcut[] }[] = [
   {
     group: 'Project',
     items: [
+      { keys: ['Ctrl', 'P'], description: 'Open the plan list' },
       { keys: ['Ctrl', 'S'], description: 'Copy share link' },
       { keys: ['Ctrl', 'E'], description: 'Export JSON' },
       { keys: ['Ctrl', 'I'], description: 'Import JSON' },

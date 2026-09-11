@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ReactFlowProvider, useReactFlow } from '@xyflow/react';
 import { GameDataProvider } from './data/context.ts';
 import { loadGameData, type GameIndex } from './data/loader.ts';
@@ -10,18 +10,29 @@ import {
   useGraphStore,
 } from './graph/store.ts';
 import { emptyGraph, type GraphNode, type Position } from './graph/types.ts';
-import { createAutosave, flushOnHide, loadLocal, saveLocal } from './graph/persist.ts';
+import { createAutosave, flushOnHide } from './graph/persist.ts';
+import {
+  createPlan,
+  deletePlan,
+  openingPlan,
+  readIndex,
+  readPlan,
+  restorePlan,
+  setActivePlan,
+  watchLibrary,
+  writePlan,
+} from './graph/library.ts';
 import { clearLocationHash, documentFromLocation, shareUrl } from './graph/url.ts';
 import { exportDocument, importDocument } from './graph/file.ts';
 import { autoLayout } from './graph/layout.ts';
-import { GraphParseError } from './graph/serialize.ts';
+import { GraphParseError, type GraphDocument } from './graph/serialize.ts';
 import { Canvas, type DropSearch } from './canvas/Canvas.tsx';
 import { nodeShape } from './canvas/geometry.ts';
 import { Header } from './ui/Header.tsx';
 import { Inspector } from './ui/Inspector.tsx';
 import { Search, type SearchChoice, type SearchIntent } from './ui/Search.tsx';
 import { ShortcutsOverlay } from './ui/ShortcutsOverlay.tsx';
-import { Toast } from './ui/Toast.tsx';
+import { Toast, type ToastAction } from './ui/Toast.tsx';
 import { isTyping, viewportDuration } from './ui/keys.ts';
 import { solve } from './solver/index.ts';
 import { SolveProvider } from './solver/context.ts';
@@ -37,13 +48,19 @@ export function App(): JSX.Element {
       .then((loaded) => {
         if (!live) return;
         // Restore before the canvas first renders, so React Flow's own
-        // `fitView` has a graph to frame. A link beats the autosave.
-        const doc = documentFromLocation() ?? loadLocal();
-        useGraphStore
-          .getState()
-          .load(
-            doc ?? { graph: emptyGraph(loaded.data.id), projectName: 'Untitled factory' },
-          );
+        // `fitView` has a graph to frame.
+        const fromLink = documentFromLocation();
+        const { id, doc } = openingPlan(fromLink, () => ({
+          graph: emptyGraph(loaded.data.id),
+          projectName: 'Untitled factory',
+        }));
+        // The link has been saved as its own plan by now, so the hash has done
+        // its job. Leaving it there would make every reload another copy.
+        if (fromLink) clearLocationHash();
+        setActivePlan(id);
+        const graphStore = useGraphStore.getState();
+        graphStore.openPlan(id, doc);
+        graphStore.setPlans(readIndex().plans);
         setIndex(loaded);
       })
       .catch((error: unknown) => {
@@ -93,9 +110,22 @@ function Editor({ index }: { index: GameIndex }): JSX.Element {
   const flow = useReactFlow();
   const [helpOpen, setHelpOpen] = useState(false);
   const [search, setSearch] = useState<SearchState>(CLOSED);
-  const [toast, setToast] = useState<string | null>(null);
+  const [plansOpen, setPlansOpen] = useState(false);
+  const [toast, setToast] = useState<{ message: string; action?: ToastAction } | null>(null);
+  const say = useCallback((message: string, action?: ToastAction) => {
+    // Returning the same object makes React bail out, so a message repeated
+    // by something on a timer — a save that keeps being refused — neither
+    // re-renders nor restarts the dismissal clock.
+    setToast((current) =>
+      current && current.message === message && !current.action && !action
+        ? current
+        : { message, action },
+    );
+  }, []);
 
   const graph = useGraphStore((state) => state.graph);
+  const activeId = useGraphStore((state) => state.activeId);
+  const plans = useGraphStore((state) => state.plans);
   const projectName = useGraphStore((state) => state.projectName);
   const selection = useGraphStore((state) => state.selection);
   const selectedEdges = useGraphStore((state) => state.selectedEdges);
@@ -113,8 +143,23 @@ function Editor({ index }: { index: GameIndex }): JSX.Element {
   // The document is already in the store by the time this component mounts.
   // Writes are debounced because a node drag rewrites `positions` on every
   // pointer move; `flushOnHide` is what makes that safe, by writing the
-  // pending document before the page can go away with it unsaved.
-  const autosave = useMemo(() => createAutosave(saveLocal), []);
+  // pending document before the page can go away with it unsaved. The payload
+  // carries the plan id, so a write still in flight when the user switches
+  // plans lands under the plan it was scheduled for.
+  const refreshPlans = useCallback(() => {
+    store.getState().setPlans(readIndex().plans);
+  }, [store]);
+
+  const autosave = useMemo(
+    () =>
+      createAutosave<{ id: string; doc: GraphDocument }>(({ id, doc }) => {
+        if (!writePlan(id, doc)) {
+          say('Browser storage is full — this plan is not being saved. Export it to a file.');
+        }
+      }),
+    [say],
+  );
+
   useEffect(() => {
     const off = flushOnHide(autosave.flush);
     return () => {
@@ -122,9 +167,122 @@ function Editor({ index }: { index: GameIndex }): JSX.Element {
       autosave.flush();
     };
   }, [autosave]);
+
   useEffect(() => {
-    autosave.schedule({ graph, projectName });
-  }, [autosave, graph, projectName]);
+    if (activeId === null) return;
+    autosave.schedule({ id: activeId, doc: { graph, projectName } });
+  }, [activeId, autosave, graph, projectName]);
+
+  // --- plans ---------------------------------------------------------------
+  /** Switches the canvas to `doc`, which must already be saved under `id`. */
+  const showPlan = useCallback(
+    (id: string, doc: GraphDocument, refit: boolean) => {
+      store.getState().openPlan(id, doc);
+      setActivePlan(id);
+      // The address bar described the plan we just left.
+      clearLocationHash();
+      refreshPlans();
+      if (refit) {
+        requestAnimationFrame(() => void flow.fitView({ padding: 0.25, duration: 0 }));
+      }
+    },
+    [flow, refreshPlans, store],
+  );
+
+  const onOpenPlan = useCallback(
+    (id: string) => {
+      if (id === store.getState().activeId) return;
+      // The plan being left keeps its last edit.
+      autosave.flush();
+      const doc = readPlan(id);
+      if (!doc) {
+        say('That plan could not be read. It may have been saved by a newer version.');
+        refreshPlans();
+        return;
+      }
+      showPlan(id, doc, true);
+    },
+    [autosave, refreshPlans, say, showPlan, store],
+  );
+
+  const onNewPlan = useCallback(() => {
+    autosave.flush();
+    const doc: GraphDocument = {
+      graph: emptyGraph(index.data.id),
+      projectName: 'Untitled factory',
+    };
+    showPlan(createPlan(doc), doc, false);
+  }, [autosave, index, showPlan]);
+
+  const onDeletePlan = useCallback(
+    (id: string) => {
+      const actions = store.getState();
+      const wasActive = id === actions.activeId;
+      // A pending write for the plan being deleted would put it straight back.
+      if (wasActive) autosave.cancel();
+      else autosave.flush();
+
+      const at = readIndex().plans.findIndex((plan) => plan.id === id);
+      const removed = deletePlan(id);
+      actions.forgetPlan(id);
+      refreshPlans();
+
+      if (wasActive) {
+        // Land on the plan that took the deleted one's place in the list,
+        // rather than jumping to the top of it.
+        const remaining = readIndex().plans;
+        const neighbour = remaining[Math.min(Math.max(at, 0), remaining.length - 1)];
+        const doc = neighbour ? readPlan(neighbour.id) : null;
+        if (neighbour && doc) {
+          showPlan(neighbour.id, doc, true);
+        } else {
+          const fresh: GraphDocument = {
+            graph: emptyGraph(index.data.id),
+            projectName: 'Untitled factory',
+          };
+          showPlan(createPlan(fresh), fresh, false);
+        }
+      }
+
+      if (!removed) return;
+      // Deleting a plan is outside the graph's undo stack, so this offer is
+      // the only way back.
+      say(`Deleted ${removed.meta.name}`, {
+        label: 'Undo',
+        onAction: () => {
+          restorePlan(removed.meta, removed.doc, at);
+          refreshPlans();
+        },
+      });
+    },
+    [autosave, index, refreshPlans, say, showPlan, store],
+  );
+
+  const onPlansOpenChange = useCallback(
+    (open: boolean) => {
+      // "Last edited" is only worth re-reading when someone is looking at it.
+      if (open) refreshPlans();
+      setPlansOpen(open);
+    },
+    [refreshPlans],
+  );
+
+  // Another window on the same browser profile writes the same library.
+  // Both keep saving and the last write wins, which is the honest behaviour
+  // for a store with no locking — but the user should hear about it once.
+  const warnedAbout = useRef<string | null>(null);
+  useEffect(
+    () =>
+      watchLibrary((changedPlanId) => {
+        refreshPlans();
+        const current = store.getState().activeId;
+        if (changedPlanId === null || current === null || changedPlanId !== current) return;
+        if (warnedAbout.current === current) return;
+        warnedAbout.current = current;
+        say('This plan is open in another window too. Reload to see those changes.');
+      }),
+    [refreshPlans, say, store],
+  );
 
   // --- adding nodes --------------------------------------------------------
   const openSearchAtScreen = useCallback(
@@ -172,7 +330,7 @@ function Editor({ index }: { index: GameIndex }): JSX.Element {
               ? makeSinkNode(choice.itemId)
               : makeNoteNode();
       if (!node) {
-        setToast('That recipe has no machine that can make it.');
+        say('That recipe has no machine that can make it.');
         setSearch(CLOSED);
         return;
       }
@@ -196,7 +354,7 @@ function Editor({ index }: { index: GameIndex }): JSX.Element {
       actions.setSelection([node.id], []);
       setSearch(CLOSED);
     },
-    [index, search.at, search.connectTo, store],
+    [index, say, search.at, search.connectTo, store],
   );
 
   // --- project actions -----------------------------------------------------
@@ -205,11 +363,11 @@ function Editor({ index }: { index: GameIndex }): JSX.Element {
     const url = shareUrl({ graph: actions.graph, projectName: actions.projectName });
     navigator.clipboard
       .writeText(url)
-      .then(() => setToast('Link copied'))
-      .catch(() => setToast('Could not reach the clipboard. Copy the address bar instead.'));
+      .then(() => say('Link copied'))
+      .catch(() => say('Could not reach the clipboard. Copy the address bar instead.'));
     // Put the graph in the address bar too, so the link is there either way.
     window.history.replaceState(null, '', url);
-  }, [store]);
+  }, [say, store]);
 
   const onExport = useCallback(() => {
     const actions = store.getState();
@@ -220,16 +378,16 @@ function Editor({ index }: { index: GameIndex }): JSX.Element {
     importDocument()
       .then((doc) => {
         if (!doc) return;
-        store.getState().load(doc);
-        // The old link no longer describes what is on screen.
-        clearLocationHash();
-        setToast(`Opened ${doc.projectName}`);
-        requestAnimationFrame(() => void flow.fitView({ padding: 0.25, duration: 0 }));
+        // An imported file arrives as its own plan, the same way a share link
+        // does, so importing never costs you the plan you had open.
+        autosave.flush();
+        showPlan(createPlan(doc), doc, true);
+        say(`Opened ${doc.projectName}`);
       })
       .catch((error: unknown) => {
-        setToast(error instanceof GraphParseError ? error.message : 'That file could not be read.');
+        say(error instanceof GraphParseError ? error.message : 'That file could not be read.');
       });
-  }, [flow, store]);
+  }, [autosave, say, showPlan]);
 
   const onLayout = useCallback(() => {
     const actions = store.getState();
@@ -240,8 +398,8 @@ function Editor({ index }: { index: GameIndex }): JSX.Element {
         store.getState().setPositions(positions);
         requestAnimationFrame(() => void flow.fitView({ padding: 0.2, duration: viewportDuration() }));
       })
-      .catch(() => setToast('Auto-layout failed. The graph is unchanged.'));
-  }, [flow, index, store]);
+      .catch(() => say('Auto-layout failed. The graph is unchanged.'));
+  }, [flow, index, say, store]);
 
   // --- keyboard ------------------------------------------------------------
   useEffect(() => {
@@ -252,6 +410,7 @@ function Editor({ index }: { index: GameIndex }): JSX.Element {
 
       if (event.key === 'Escape') {
         if (search.open) setSearch(CLOSED);
+        else if (plansOpen) onPlansOpenChange(false);
         else if (helpOpen) setHelpOpen(false);
         else actions.setSelection([], []);
         return;
@@ -274,6 +433,10 @@ function Editor({ index }: { index: GameIndex }): JSX.Element {
       if (event.key === '?') {
         event.preventDefault();
         setHelpOpen((open) => !open);
+      } else if (control && event.key.toLowerCase() === 'p') {
+        // Quick-switch, the way Ctrl P opens a file list in an editor.
+        event.preventDefault();
+        onPlansOpenChange(!plansOpen);
       } else if (control && event.key.toLowerCase() === 'k') {
         event.preventDefault();
         openSearchAtCentre();
@@ -335,7 +498,9 @@ function Editor({ index }: { index: GameIndex }): JSX.Element {
     onImport,
     onLayout,
     onShare,
+    onPlansOpenChange,
     openSearchAtCentre,
+    plansOpen,
     search.open,
     store,
   ]);
@@ -348,6 +513,13 @@ function Editor({ index }: { index: GameIndex }): JSX.Element {
       <Header
         projectName={projectName}
         onProjectNameChange={store.getState().setProjectName}
+        plans={plans}
+        activePlanId={activeId}
+        plansOpen={plansOpen}
+        onPlansOpenChange={onPlansOpenChange}
+        onOpenPlan={onOpenPlan}
+        onNewPlan={onNewPlan}
+        onDeletePlan={onDeletePlan}
         result={result}
         canUndo={past > 0}
         canRedo={future > 0}
@@ -380,7 +552,11 @@ function Editor({ index }: { index: GameIndex }): JSX.Element {
         onChoose={onChoose}
       />
       <ShortcutsOverlay open={helpOpen} onClose={() => setHelpOpen(false)} />
-      <Toast message={toast} onDismiss={() => setToast(null)} />
+      <Toast
+        message={toast?.message ?? null}
+        action={toast?.action ?? null}
+        onDismiss={() => setToast(null)}
+      />
     </div>
   );
 }

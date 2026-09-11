@@ -1,7 +1,8 @@
-import { useRef, useState } from 'react';
 import { useGameData } from '../data/context.ts';
+import type { PlanMeta } from '../graph/library.ts';
 import type { SolveResult } from '../solver/types.ts';
 import { IconButton } from './Button.tsx';
+import { PlanSwitcher } from './PlanSwitcher.tsx';
 import { Sprite } from './Sprite.tsx';
 import { pollution, power, rate } from './format.ts';
 import {
@@ -21,6 +22,13 @@ import styles from './Header.module.css';
 interface Props {
   projectName: string;
   onProjectNameChange: (name: string) => void;
+  plans: PlanMeta[];
+  activePlanId: string | null;
+  plansOpen: boolean;
+  onPlansOpenChange: (open: boolean) => void;
+  onOpenPlan: (id: string) => void;
+  onNewPlan: () => void;
+  onDeletePlan: (id: string) => void;
   result: SolveResult | null;
   canUndo: boolean;
   canRedo: boolean;
@@ -40,17 +48,6 @@ const BALANCE_EPSILON = 1e-6;
 
 export function Header(props: Props): JSX.Element {
   const { data, items } = useGameData();
-  const [draft, setDraft] = useState(props.projectName);
-  const [lastName, setLastName] = useState(props.projectName);
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  // Undo, import and share can rename the project from outside this field.
-  // Adjusting during render beats an effect: no second commit, no flash of the
-  // stale name.
-  if (lastName !== props.projectName) {
-    setLastName(props.projectName);
-    setDraft(props.projectName);
-  }
 
   const result = props.result;
   // A graph with an unbalanced port has totals that do not add up, so say so
@@ -64,28 +61,18 @@ export function Header(props: Props): JSX.Element {
     .sort((a, b) => b[1] - a[1])
     .slice(0, MAX_INPUTS);
 
-  const commitName = (): void => {
-    const next = draft.trim() || 'Untitled factory';
-    setDraft(next);
-    if (next !== props.projectName) props.onProjectNameChange(next);
-  };
-
   return (
     <header className={styles.header}>
-      <input
-        ref={inputRef}
-        className={styles.name}
-        value={draft}
-        aria-label="Project name"
-        onChange={(event) => setDraft(event.target.value)}
-        onBlur={commitName}
-        onKeyDown={(event) => {
-          if (event.key === 'Enter') inputRef.current?.blur();
-          if (event.key === 'Escape') {
-            setDraft(props.projectName);
-            inputRef.current?.blur();
-          }
-        }}
+      <PlanSwitcher
+        projectName={props.projectName}
+        onProjectNameChange={props.onProjectNameChange}
+        plans={props.plans}
+        activeId={props.activePlanId}
+        open={props.plansOpen}
+        onOpenChange={props.onPlansOpenChange}
+        onOpen={props.onOpenPlan}
+        onNew={props.onNewPlan}
+        onDelete={props.onDeletePlan}
       />
       <span className={styles.dataSet}>{data.name}</span>
 

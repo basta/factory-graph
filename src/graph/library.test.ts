@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
   deletePlan,
+  openingPlan,
   emptyIndex,
   migrateLegacyPlan,
   newPlanId,
@@ -200,5 +201,77 @@ describe('migration from the single-document key', () => {
 
   it('does nothing when there is no old autosave', () => {
     expect(migrateLegacyPlan()).toBeNull();
+  });
+});
+
+describe('choosing the plan to open', () => {
+  const fallback = (): GraphDocument => doc('Untitled factory', 'fresh');
+
+  it('creates a plan when the library is empty', () => {
+    const { id, doc: opened } = openingPlan(null, fallback);
+    expect(opened).toEqual(fallback());
+    expect(readIndex().plans.map((p) => p.id)).toEqual([id]);
+    // Saved, not just handed back, so a reload finds it.
+    expect(readPlan(id)).toEqual(fallback());
+  });
+
+  it('reopens the plan that was last active', () => {
+    const other = newPlanId();
+    const wanted = newPlanId();
+    writePlan(other, doc('Other'));
+    writePlan(wanted, doc('Wanted'));
+    setActivePlan(wanted);
+
+    expect(openingPlan(null, fallback).id).toBe(wanted);
+  });
+
+  it('falls back to another plan when the active one is unreadable', () => {
+    const good = newPlanId();
+    const broken = newPlanId();
+    writePlan(good, doc('Good'));
+    writePlan(broken, doc('Broken'));
+    setActivePlan(broken);
+    store.setItem(`factory-graph:plan:${broken}`, 'garbage');
+
+    const opened = openingPlan(null, fallback);
+    expect(opened.id).toBe(good);
+    expect(opened.doc.projectName).toBe('Good');
+  });
+
+  it('creates a plan when every saved one is unreadable', () => {
+    const broken = newPlanId();
+    writePlan(broken, doc('Broken'));
+    store.setItem(`factory-graph:plan:${broken}`, 'garbage');
+
+    const opened = openingPlan(null, fallback);
+    expect(opened.id).not.toBe(broken);
+    expect(opened.doc).toEqual(fallback());
+  });
+
+  it('opens a share link as a new plan, leaving saved work alone', () => {
+    const mine = newPlanId();
+    writePlan(mine, doc('My factory'));
+    setActivePlan(mine);
+
+    const link = doc('Someone else’s factory', 'theirs');
+    const opened = openingPlan(link, fallback);
+
+    expect(opened.id).not.toBe(mine);
+    expect(opened.doc).toEqual(link);
+    // The whole point: what was already saved is still saved, and still mine.
+    expect(readPlan(mine)).toEqual(doc('My factory'));
+    expect(readIndex().plans.map((p) => p.name)).toEqual([
+      'My factory',
+      'Someone else’s factory',
+    ]);
+  });
+
+  it('folds a pre-library autosave in before choosing', () => {
+    store.setItem('factory-graph:document', serializeDocument(doc('Old factory')));
+
+    const opened = openingPlan(null, fallback);
+    expect(opened.doc.projectName).toBe('Old factory');
+    expect(readIndex().plans).toHaveLength(1);
+    expect(store.getItem('factory-graph:document')).toBeNull();
   });
 });

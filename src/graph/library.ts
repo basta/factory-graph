@@ -196,6 +196,45 @@ export function migrateLegacyPlan(): PlanMeta | null {
   return { id, name: doc.projectName, updatedAt: Date.now() };
 }
 
+/** Saves `doc` as a brand-new plan and returns its id. */
+export function createPlan(doc: GraphDocument): string {
+  const id = newPlanId();
+  writePlan(id, doc);
+  return id;
+}
+
+/**
+ * Picks the plan to put on the canvas at boot, creating one when there is
+ * nothing to open.
+ *
+ * A document from a share link always becomes a *new* plan. Following a link
+ * used to overwrite whatever the single autosave key held, which cost you your
+ * work for the crime of clicking someone else's URL; now it costs you nothing.
+ */
+export function openingPlan(
+  fromLink: GraphDocument | null,
+  fallback: () => GraphDocument,
+): { id: string; doc: GraphDocument } {
+  migrateLegacyPlan();
+
+  if (fromLink) {
+    return { id: createPlan(fromLink), doc: fromLink };
+  }
+
+  // The plan last looked at, then anything else that still reads — a plan
+  // whose body is corrupt must not strand the boot on an error.
+  const index = readIndex();
+  const ids = index.activeId === null ? [] : [index.activeId];
+  for (const plan of index.plans) if (plan.id !== index.activeId) ids.push(plan.id);
+  for (const id of ids) {
+    const doc = readPlan(id);
+    if (doc) return { id, doc };
+  }
+
+  const doc = fallback();
+  return { id: createPlan(doc), doc };
+}
+
 /**
  * Calls `onChange` when another window writes to the library. Storage events
  * only fire in *other* windows, so this never reacts to our own writes.

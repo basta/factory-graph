@@ -28,6 +28,8 @@ interface Snapshot {
   selectedEdges: string[];
   positions: Record<string, { x: number; y: number }>;
   undoDepth: number;
+  plans: { id: string; name: string }[];
+  activeId: string | null;
 }
 
 /** Reads the store through the debug hook the app exposes in every build. */
@@ -56,6 +58,8 @@ async function snapshot(page: Page): Promise<Snapshot> {
       })),
       selection: state.selection,
       selectedEdges: state.selectedEdges,
+      plans: state.plans.map((plan) => ({ id: plan.id, name: plan.name })),
+      activeId: state.activeId,
       positions: state.graph.positions,
       undoDepth: state.history.past.length,
     };
@@ -377,6 +381,10 @@ async function main(): Promise<void> {
     // The link alone must rebuild the graph.
     const beforeShare = await snapshot(page);
     await page.evaluate(() => localStorage.clear());
+    // Via a blank page: navigating straight from `/` to `/#hash` only changes
+    // the fragment, so the app would never reboot and this would pass without
+    // the link being read at all.
+    await page.goto('about:blank');
     await page.goto(copied);
     await page.waitForTimeout(700);
     state = await snapshot(page);
@@ -479,6 +487,102 @@ async function main(): Promise<void> {
       `${state.nodes.length} nodes, ${state.edges.length} edges`,
     );
     unlinkSync(savedPath);
+
+    // --- saved plans ---------------------------------------------------------
+    // Name the open plan, so its row in the list can be told from the rest.
+    await page.fill('input[aria-label="Project name"]', 'Mall');
+    await page.keyboard.press('Enter');
+    await page.waitForTimeout(700);
+
+    await page.keyboard.press('Control+p');
+    await page.waitForTimeout(250);
+    check(
+      'Ctrl P opens the plan list',
+      await page.locator('[role="menu"][aria-label="Saved plans"]').isVisible(),
+    );
+
+    const beforePlans = await snapshot(page);
+    check(
+      'the open plan is listed under its name',
+      beforePlans.plans.some((plan) => plan.id === beforePlans.activeId && plan.name === 'Mall'),
+      beforePlans.plans.map((plan) => plan.name).join(', '),
+    );
+
+    await page.getByRole('menuitem', { name: 'New plan' }).click();
+    await page.waitForTimeout(500);
+    state = await snapshot(page);
+    check('a new plan opens an empty canvas', state.nodes.length === 0, `${state.nodes.length} nodes`);
+    check(
+      'and joins the list without disturbing the others',
+      state.plans.length === beforePlans.plans.length + 1 &&
+        state.plans.some((plan) => plan.name === 'Mall'),
+      state.plans.map((plan) => plan.name).join(', '),
+    );
+
+    await page.keyboard.press('Control+p');
+    await page.waitForTimeout(250);
+    await page.getByRole('menuitem', { name: /^Mall/ }).click();
+    await page.waitForTimeout(600);
+    state = await snapshot(page);
+    check(
+      'switching back restores that plan',
+      state.activeId === beforePlans.activeId && state.nodes.length === beforePlans.nodes.length,
+      `${state.nodes.length} nodes`,
+    );
+
+    // The one this whole feature exists for: following someone's link used to
+    // overwrite the single autosave slot and take your work with it.
+    const beforeLink = await snapshot(page);
+    await page.goto('about:blank');
+    await page.goto(copied);
+    await page.waitForTimeout(900);
+    state = await snapshot(page);
+    check(
+      'a share link opens as its own plan',
+      state.plans.length === beforeLink.plans.length + 1,
+      `${beforeLink.plans.length} -> ${state.plans.length}`,
+    );
+    check(
+      'and leaves every saved plan alone',
+      state.plans.some((plan) => plan.name === 'Mall'),
+      state.plans.map((plan) => plan.name).join(', '),
+    );
+    check(
+      'and clears the hash it came from',
+      (await page.evaluate(() => window.location.hash)) === '',
+    );
+    await page.reload();
+    await page.waitForTimeout(800);
+    check(
+      'so reloading does not make a second copy of it',
+      (await snapshot(page)).plans.length === beforeLink.plans.length + 1,
+      `${(await snapshot(page)).plans.length} plans`,
+    );
+
+    // Deleting a plan is outside the graph's undo stack; the toast is the
+    // only way back, so it had better work.
+    await page.keyboard.press('Control+p');
+    await page.waitForTimeout(250);
+    const beforeDelete = await snapshot(page);
+    await page.getByRole('button', { name: 'Delete Mall' }).click();
+    await page.waitForTimeout(500);
+    state = await snapshot(page);
+    check(
+      'deleting a plan takes it off the list',
+      state.plans.length === beforeDelete.plans.length - 1 &&
+        !state.plans.some((plan) => plan.name === 'Mall'),
+      `${beforeDelete.plans.length} -> ${state.plans.length}`,
+    );
+
+    await page.locator('[role="status"]').getByRole('button', { name: 'Undo' }).click();
+    await page.waitForTimeout(400);
+    state = await snapshot(page);
+    check(
+      'and the toast undo puts it back',
+      state.plans.length === beforeDelete.plans.length &&
+        state.plans.some((plan) => plan.name === 'Mall'),
+      state.plans.map((plan) => plan.name).join(', '),
+    );
 
     check('no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
 

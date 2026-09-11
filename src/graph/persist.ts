@@ -1,36 +1,7 @@
-import { parseDocument, serializeDocument, type GraphDocument } from './serialize.ts';
-
-const KEY = 'factory-graph:document';
-
 /**
- * Autosave to `localStorage`. Every failure mode here is survivable — a
- * private window, a full quota, a document written by an older build — so
- * nothing throws; a bad save is dropped and a bad load starts empty.
+ * Autosave timing. The store itself is `library.ts`; this is only the part
+ * that decides *when* a write happens.
  */
-export function saveLocal(doc: GraphDocument): void {
-  try {
-    localStorage.setItem(KEY, serializeDocument(doc));
-  } catch {
-    // Quota or a blocked store. The graph is still in memory and in the URL.
-  }
-}
-
-export function loadLocal(): GraphDocument | null {
-  try {
-    const raw = localStorage.getItem(KEY);
-    return raw === null ? null : parseDocument(raw);
-  } catch {
-    return null;
-  }
-}
-
-export function clearLocal(): void {
-  try {
-    localStorage.removeItem(KEY);
-  } catch {
-    // Nothing to do; the next save will overwrite it anyway.
-  }
-}
 
 /**
  * How long a burst of edits is allowed to run before it is written. Dragging a
@@ -42,24 +13,27 @@ export function clearLocal(): void {
  */
 export const AUTOSAVE_DELAY_MS = 500;
 
-export interface Autosave {
-  /** Records the document and arms the timer, restarting it if already armed. */
-  schedule(doc: GraphDocument): void;
-  /** Writes a pending document now. A no-op when nothing is pending. */
+export interface Autosave<T> {
+  /** Records the payload and arms the timer, restarting it if already armed. */
+  schedule(payload: T): void;
+  /** Writes a pending payload now. A no-op when nothing is pending. */
   flush(): void;
-  /** Drops a pending document without writing it. */
+  /** Drops a pending payload without writing it. */
   cancel(): void;
 }
 
 /**
- * A trailing debounce over `write`. Only the newest document is kept, so a
- * long drag writes once, at the end, rather than once per frame.
+ * A trailing debounce over `write`. Only the newest payload is kept, so a long
+ * drag writes once, at the end, rather than once per frame.
+ *
+ * The payload carries *which* plan to write as well as what, so a write left
+ * pending when the user switches plans can never land under the new plan's id.
  */
-export function createAutosave(
-  write: (doc: GraphDocument) => void,
+export function createAutosave<T>(
+  write: (payload: T) => void,
   delay: number = AUTOSAVE_DELAY_MS,
-): Autosave {
-  let pending: GraphDocument | null = null;
+): Autosave<T> {
+  let pending: T | null = null;
   let timer: ReturnType<typeof setTimeout> | null = null;
 
   const clear = (): void => {
@@ -68,8 +42,8 @@ export function createAutosave(
   };
 
   return {
-    schedule(doc) {
-      pending = doc;
+    schedule(payload) {
+      pending = payload;
       clear();
       timer = setTimeout(() => {
         timer = null;

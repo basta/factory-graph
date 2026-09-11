@@ -386,9 +386,10 @@ selection-visibility nudge above, and the narrow-screen header trim (the first
 
 Everything the spec asked for is in and checked. Known limits, all deliberate:
 
-- **Quality, blueprint strings, space platforms and multi-graph projects** are
-  the spec's stated non-goals and are absent. Quality modules are hidden from
-  the pickers rather than offered as a choice that does nothing useful.
+- **Quality, blueprint strings and space platforms** are the spec's stated
+  non-goals and are absent. Quality modules are hidden from the pickers rather
+  than offered as a choice that does nothing useful. Multi-graph projects were
+  on that list too; see M6 below for why they came off it.
 - **Pipe saturation is approximate.** Belts and inserters come from the game
   data; Factorio's pipe throughput depends on run length, and the 1000 units/s
   constant is the figure calculators use for a short run.
@@ -465,3 +466,89 @@ The app failed *loudly* rather than silently, which is the one thing that went
 right: `loadGameData` throws on a non-ok response and the error state says
 "Could not load data set (404)" instead of rendering an empty canvas that looks
 like a fresh project.
+
+## M6 — Saved plans
+
+### What the single autosave key was actually doing
+
+The app already autosaved, to one `localStorage` key. Two things were wrong with
+that, and neither was visible from the UI:
+
+- **Following a share link destroyed your work.** Boot preferred the URL over
+  the autosave, and the save effect then wrote the link's document straight over
+  the key. Click a friend's link, reload, and your factory was gone — no undo,
+  no warning, no copy anywhere. This is the whole reason the feature exists, and
+  it is now the check the smoke test cares most about.
+- **The autosave ran on every drag frame.** `moveNodes` rewrites
+  `graph.positions` on each pointer move and the effect depended on `graph`, so
+  a drag did a full `JSON.stringify` plus a synchronous `setItem` per frame —
+  48 KB of JSON at 100 nodes, on the frame budget. It is now a 500 ms trailing
+  debounce, flushed on `pagehide` and on a hidden `visibilitychange` (the two
+  that fire on mobile Safari) and on unmount.
+
+The debounce and the multi-plan store landed as separate commits, because the
+first is a fix and the second is a feature and they fail in different ways.
+
+### Storage shape
+
+One key per plan plus a small index, not one blob. A blob would rewrite every
+plan on every keystroke, and one oversized plan would take the whole library
+down with a quota error. Bodies go through lz-string, the same trick the share
+link uses. Measured on a deliberately dense graph — beacons and full modules on
+every node, transport on every edge:
+
+```
+ 10 nodes   4.7 KB json →  2.3 KB lz
+100 nodes  48.1 KB json → 12.1 KB lz
+300 nodes 144.9 KB json → 26.7 KB lz
+```
+
+Against a ~5 MB budget that is a hundred-odd real plans, so quota is not a
+constraint worth designing around — only worth failing honestly on. `writePlan`
+returns false when the write is refused and the UI says the plan is not being
+saved, rather than dropping it silently the way the old code did.
+
+### Decisions worth recording
+
+- **A dropdown, not a tab strip.** Tabs were the original idea. A permanent
+  second bar costs 28px of canvas forever, reads like a browser rather than a
+  tool, and stops working around the sixth plan — which is exactly where a list
+  starts being useful. The switcher hangs off the project name, which was
+  already the thing in the header that names the document.
+- **Undo is per plan.** `openPlan` parks the current stack and restores the
+  target's, so a round trip through another plan does not cost you your history.
+  Snapshots are deep clones, so this is the one structure in the app that can
+  grow without bound; only the five most recently visited stacks are kept.
+- **Links and imports both open as new plans.** Neither can overwrite what you
+  have. A link's hash is cleared once it has been saved, or every reload would
+  be another copy of it.
+- **Deleting a plan is outside the graph's undo stack**, so the toast grew an
+  action and that offer is the only way back. Restoring puts the plan back at
+  its original position in the list rather than at the end.
+- **Two windows still race, and now say so.** Per-plan keys mean the damage is
+  bounded to the one plan open in both, instead of the whole library. Last write
+  wins — the honest behaviour for a store with no locking — and a `storage`
+  listener says it once per plan rather than once per keystroke.
+
+### What the screenshot showed
+
+Two things, both fixed before the commit. The panel was anchored to the name
+input, which is 20px tall and vertically centred in a 44px header, so it opened
+*across* the header's bottom hairline; the project block is now stretched to the
+full header height and the panel meets that line instead of crossing it. And
+focusing the first row on open drew a copper `:focus-visible` ring that the
+list's own `overflow-y` clipped — the panel takes focus itself now and the arrow
+keys move a highlight, which is what `Search` already does with its input.
+
+### A smoke check that was passing for the wrong reason
+
+`page.goto(shareLink)` from `/` to `/#hash` is a *same-document* navigation: the
+fragment changes, the app never reboots, and nothing is read. The existing "the
+link rebuilds the graph with no local storage" check was therefore asserting
+that a graph already on screen was still on screen. It goes via `about:blank`
+now, and so does the new link check — which is what caught it, since the new one
+had a count to compare and the old one did not.
+
+That same gap is real in the product and is still there: pasting a share link
+into the address bar of an already-open tab changes the hash and does nothing,
+because there is no `hashchange` listener. Reloading works. Left alone for now.

@@ -116,6 +116,9 @@ export const PlusIcon = (p: GlyphProps): JSX.Element =>
 
 export const MinusIcon = (p: GlyphProps): JSX.Element => svg(<path d="M3.5 8h9" />, p);
 
+export const ChevronDownIcon = (p: GlyphProps): JSX.Element =>
+  svg(<path d="m4 6.5 4 4 4-4" />, p);
+
 export const FitIcon = (p: GlyphProps): JSX.Element =>
   svg(
     <>
