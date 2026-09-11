@@ -76,7 +76,7 @@ header band and no handles, `--ink-muted` text.
 
 ```
 +--------------------------------------------------------------------------------+
-| Green circuits   Space Age | 2.4 MW  18/min  [ic]45.0 [ic]90.0 |  U R  L S E I  |  44px
+| Green circuits v Space Age | 2.4 MW  18/min  [ic]45.0 [ic]90.0 |  U R  L S E I  |  44px
 +------------------------------------------------------+-------------------------+
 |  . . . . . . . . . . . . . . . . . . . . . . . . .   |  Electronic circuit     |
 |  . . +----------+ . . . . . . . +----------+ . . . .  |  ----------------------|
@@ -96,8 +96,8 @@ header band and no handles, `--ink-muted` text.
                                                           320px inspector
 ```
 
-- **Header, 44px**, `--panel`, 1px `--line` bottom. Left: editable project name, then the
-  data set as muted text. Middle: totals strip — power and pollution as a 16px inline SVG
+- **Header, 44px**, `--panel`, 1px `--line` bottom. Left: editable project name with a
+  caret that drops the list of saved plans, then the data set as muted text. Middle: totals strip — power and pollution as a 16px inline SVG
   glyph + mono number + unit, then raw inputs as game sprites + mono rate. No words beyond
   units. Right: six 28px icon buttons — undo, redo, auto-layout, share, export, import.
 - **Inspector, 320px**, slides in from the right on selection (translateX, 120ms, killed
@@ -105,6 +105,14 @@ header band and no handles, `--ink-muted` text.
   the full width — no boxes, no cards, no rounded groups. Labels `--ink-muted` left,
   values `--ink` right. Editable values are text on a 1px `--line` underline that turns
   `--copper` on focus.
+- **Plan list**, 280px, hangs off the bottom edge of the header directly under the
+  project name, sharing the header's own hairline as its top border. 24px rows of
+  `[plan name] [last edited, 11px --ink-muted]`, the open plan's name in `--copper` and
+  nothing else coloured. A trash glyph appears on the hovered row; a `+ New plan` row
+  sits below a full-width hairline. Past six plans a filter field appears above the
+  list. A dropdown and not a tab strip: a permanent second bar would cost 28px of canvas
+  forever and stop scaling at about the sixth plan, which is where a list starts earning
+  its keep.
 - **Canvas**: `--bg-canvas`, 1px dots in `--grid-dot` on a 24px pitch. Custom minimap
   bottom-left (panel-coloured nodes on a canvas-coloured field), custom zoom controls
   bottom-right. React Flow's attribution, default handles, default edges, default

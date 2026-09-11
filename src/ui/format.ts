@@ -32,3 +32,30 @@ export function pollution(perMin: number): string {
 export function percent(fraction: number): string {
   return Number.isFinite(fraction) ? `${Math.round(fraction * 100)}%` : '—';
 }
+
+const MINUTE = 60_000;
+const HOUR = 60 * MINUTE;
+const DAY = 24 * HOUR;
+
+/**
+ * How long ago something was saved, for the plan list. Coarse on purpose —
+ * the question it answers is "which of these was I just working on", and a
+ * ticking "47 seconds ago" invites a precision the timestamp does not have.
+ */
+export function timeAgo(then: number, now: number = Date.now()): string {
+  const elapsed = now - then;
+  if (!Number.isFinite(elapsed)) return '';
+  if (elapsed < MINUTE) return 'just now';
+  if (elapsed < HOUR) {
+    const minutes = Math.floor(elapsed / MINUTE);
+    return minutes === 1 ? '1 min ago' : `${minutes} min ago`;
+  }
+  if (elapsed < DAY) {
+    const hours = Math.floor(elapsed / HOUR);
+    return hours === 1 ? '1 hour ago' : `${hours} hours ago`;
+  }
+  const days = Math.floor(elapsed / DAY);
+  if (days === 1) return 'yesterday';
+  if (days < 30) return `${days} days ago`;
+  return new Date(then).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}

@@ -1,0 +1,176 @@
+.root {
+  position: relative;
+  /* Full header height, so the panel can hang off the bottom of the header
+     rather than off the middle of a 20px input. */
+  align-self: stretch;
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.name {
+  width: 15ch;
+  min-width: 8ch;
+  max-width: 28ch;
+  flex: none;
+  padding: 2px 0;
+  font-size: var(--size-ui);
+  font-weight: 500;
+  color: var(--ink);
+  border-bottom: 1px solid transparent;
+  field-sizing: content;
+}
+
+.name:hover {
+  border-bottom-color: var(--line);
+}
+
+.name:focus {
+  border-bottom-color: var(--copper);
+}
+
+.toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  color: var(--ink-muted);
+  border-radius: var(--radius);
+}
+
+.toggle:hover,
+.toggle[aria-expanded='true'] {
+  color: var(--ink);
+  background: var(--panel-raised);
+}
+
+/* Anchored to the project block, so it hangs under the name rather than
+   under the caret at the end of it, and meets the header's own bottom
+   hairline instead of crossing it. */
+.panel {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 40;
+  width: 280px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+
+.filter {
+  display: block;
+  width: 100%;
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--line);
+}
+
+.filter::placeholder {
+  color: var(--ink-muted);
+}
+
+.panel:focus-visible {
+  outline: none;
+}
+
+.list {
+  max-height: 320px;
+  overflow-y: auto;
+  padding: 2px 0;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  height: 24px;
+}
+
+.highlighted {
+  background: var(--panel-raised);
+}
+
+.openButton {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  padding: 0 4px 0 10px;
+  text-align: left;
+}
+
+.planName {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--ink);
+}
+
+/* The one copper thing in the list: which plan you are looking at. */
+.current .planName {
+  color: var(--copper);
+}
+
+.when {
+  flex: none;
+  font-size: var(--size-port);
+  color: var(--ink-muted);
+}
+
+.delete {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 100%;
+  flex: none;
+  color: var(--ink-muted);
+  opacity: 0;
+}
+
+/* Reachable by keyboard, quiet until the row is under the cursor. */
+.row:hover .delete,
+.delete:focus-visible {
+  opacity: 1;
+}
+
+.delete:hover {
+  color: var(--warn);
+}
+
+.none {
+  margin: 0;
+  padding: 8px 10px;
+  color: var(--ink-muted);
+}
+
+.new {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  height: 26px;
+  padding: 0 10px;
+  color: var(--ink-muted);
+  border-top: 1px solid var(--line);
+}
+
+.new:hover {
+  color: var(--ink);
+  background: var(--panel-raised);
+}
+
+@media (max-width: 720px) {
+  .name {
+    width: 10ch;
+  }
+
+  .panel {
+    width: 240px;
+  }
+}

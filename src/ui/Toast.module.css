@@ -15,3 +15,19 @@
   border-color: var(--warn);
   color: var(--warn);
 }
+
+.toast:has(.action) {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  padding-right: 8px;
+}
+
+.action {
+  color: var(--copper);
+  border-bottom: 1px solid transparent;
+}
+
+.action:hover {
+  border-bottom-color: var(--copper);
+}

@@ -9,27 +9,6 @@
   border-bottom: 1px solid var(--line);
 }
 
-.name {
-  width: 15ch;
-  min-width: 8ch;
-  max-width: 28ch;
-  flex: none;
-  padding: 2px 0;
-  font-size: var(--size-ui);
-  font-weight: 500;
-  color: var(--ink);
-  border-bottom: 1px solid transparent;
-  field-sizing: content;
-}
-
-.name:hover {
-  border-bottom-color: var(--line);
-}
-
-.name:focus {
-  border-bottom-color: var(--copper);
-}
-
 .dataSet {
   flex: none;
   color: var(--ink-muted);
@@ -119,10 +98,6 @@
 
   .totals::-webkit-scrollbar {
     display: none;
-  }
-
-  .name {
-    width: 10ch;
   }
 
   .actions {
