@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import type { GameIndex } from '../data/loader.ts';
 import { defaultMachineFor } from '../data/loader.ts';
 import * as history from './history.ts';
+import type { PlanMeta } from './library.ts';
 import type { GraphDocument } from './serialize.ts';
 import { emptyGraph } from './types.ts';
 import type {
@@ -28,11 +29,55 @@ export interface GraphState extends GraphDocument {
   history: history.History<GraphDocument>;
   selection: NodeId[];
   selectedEdges: string[];
+  /** Every saved plan, in the order the switcher lists them. */
+  plans: PlanMeta[];
+  /** Which of them is on the canvas. Null only before the first boot step. */
+  activeId: string | null;
+}
+
+/**
+ * Undo stacks for plans that are not on the canvas. Switching away parks the
+ * stack here and switching back restores it, so a round trip through another
+ * plan does not cost you your history.
+ *
+ * Snapshots are deep clones, so this is the one place in the app that can grow
+ * without bound; the few most recently visited plans are kept and the rest are
+ * dropped. Losing undo on a plan you have not touched in a while is a far
+ * better failure than an editor that swells until the tab dies.
+ */
+export const PARKED_HISTORY_LIMIT = 5;
+const parkedHistories = new Map<string, history.History<GraphDocument>>();
+
+function park(id: string, stack: history.History<GraphDocument>): void {
+  if (stack.past.length === 0 && stack.future.length === 0) {
+    parkedHistories.delete(id);
+    return;
+  }
+  // Delete first so the re-insert moves it to the young end of the Map.
+  parkedHistories.delete(id);
+  parkedHistories.set(id, stack);
+  while (parkedHistories.size > PARKED_HISTORY_LIMIT) {
+    const oldest = parkedHistories.keys().next().value;
+    if (oldest === undefined) break;
+    parkedHistories.delete(oldest);
+  }
+}
+
+function unpark(id: string): history.History<GraphDocument> {
+  const stack = parkedHistories.get(id);
+  parkedHistories.delete(id);
+  return stack ?? history.emptyHistory<GraphDocument>();
 }
 
 interface Actions {
-  /** Replaces the whole document, clearing history — load, import, reset. */
+  /** Replaces the whole document and forgets every undo stack — a cold start. */
   load(doc: GraphDocument): void;
+  /** Switches plans, parking the current undo stack and restoring the target's. */
+  openPlan(id: string, doc: GraphDocument): void;
+  /** Refreshes the switcher list from the library. */
+  setPlans(plans: PlanMeta[]): void;
+  /** Drops a deleted plan's parked undo stack. */
+  forgetPlan(id: string): void;
   setProjectName(name: string): void;
 
   addNode(node: GraphNode, position: Position): void;
@@ -87,15 +132,46 @@ export const useGraphStore = create<GraphStore>()((set, get) => {
     history: history.emptyHistory<GraphDocument>(),
     selection: [],
     selectedEdges: [],
+    plans: [],
+    activeId: null,
 
     load(doc) {
+      parkedHistories.clear();
       set({
         graph: doc.graph,
         projectName: doc.projectName,
         history: history.emptyHistory<GraphDocument>(),
         selection: [],
         selectedEdges: [],
+        activeId: null,
       });
+    },
+
+    openPlan(id, doc) {
+      set((state) => {
+        if (state.activeId === id) {
+          // Re-opening the plan already on the canvas would throw away its
+          // undo stack for nothing.
+          return {};
+        }
+        if (state.activeId !== null) park(state.activeId, state.history);
+        return {
+          activeId: id,
+          graph: doc.graph,
+          projectName: doc.projectName,
+          history: unpark(id),
+          selection: [],
+          selectedEdges: [],
+        };
+      });
+    },
+
+    setPlans(plans) {
+      set({ plans });
+    },
+
+    forgetPlan(id) {
+      parkedHistories.delete(id);
     },
 
     setProjectName(name) {

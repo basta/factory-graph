@@ -5,8 +5,10 @@ import {
   makeRecipeNode,
   makeSinkNode,
   makeSourceNode,
+  PARKED_HISTORY_LIMIT,
   useGraphStore,
 } from './store.ts';
+import type { GraphDocument } from './serialize.ts';
 import { emptyGraph } from './types.ts';
 
 const index = testGameData();
@@ -257,5 +259,89 @@ describe('node constructors', () => {
   it('gives every node a distinct id', () => {
     const ids = new Set(Array.from({ length: 500 }, () => makeSourceNode('iron-plate').id));
     expect(ids.size).toBe(500);
+  });
+});
+
+describe('switching plans', () => {
+  const plan = (projectName: string, text: string): GraphDocument => {
+    const graph = emptyGraph('2x1');
+    graph.nodes.push({ id: `n-${text}`, kind: 'note', text });
+    return { graph, projectName };
+  };
+
+  it('puts the target document on the canvas', () => {
+    state().openPlan('a', plan('Red science', 'red'));
+    expect(state().activeId).toBe('a');
+    expect(state().projectName).toBe('Red science');
+
+    state().openPlan('b', plan('Blue science', 'blue'));
+    expect(state().activeId).toBe('b');
+    expect(state().graph.nodes[0]).toMatchObject({ text: 'blue' });
+  });
+
+  it('keeps each plan its own undo stack across a round trip', () => {
+    state().openPlan('a', plan('A', 'a'));
+    state().setNoteText('n-a', 'a edited');
+    expect(state().canUndo()).toBe(true);
+
+    // A plan that has never been edited starts with nothing to undo.
+    state().openPlan('b', plan('B', 'b'));
+    expect(state().canUndo()).toBe(false);
+
+    // Coming back restores the stack rather than starting over.
+    state().openPlan('a', plan('A', 'a edited'));
+    expect(state().canUndo()).toBe(true);
+    state().undo();
+    expect(state().graph.nodes[0]).toMatchObject({ text: 'a' });
+  });
+
+  it('does not undo across a switch', () => {
+    state().openPlan('a', plan('A', 'a'));
+    state().setNoteText('n-a', 'a edited');
+    state().openPlan('b', plan('B', 'b'));
+
+    state().undo();
+    // B has no history, so the undo is a no-op — it must not reach into A.
+    expect(state().activeId).toBe('b');
+    expect(state().projectName).toBe('B');
+    expect(state().graph.nodes[0]).toMatchObject({ text: 'b' });
+  });
+
+  it('ignores a re-open of the plan already on the canvas', () => {
+    state().openPlan('a', plan('A', 'a'));
+    state().setNoteText('n-a', 'a edited');
+    state().openPlan('a', plan('A', 'something else'));
+
+    expect(state().canUndo()).toBe(true);
+    expect(state().graph.nodes[0]).toMatchObject({ text: 'a edited' });
+  });
+
+  it('drops the oldest parked stack past the limit', () => {
+    const visit = (id: string): void => {
+      state().openPlan(id, plan(id, id));
+      state().setNoteText(`n-${id}`, `${id} edited`);
+    };
+
+    visit('first');
+    for (let i = 0; i < PARKED_HISTORY_LIMIT; i += 1) visit(`filler${i}`);
+
+    // 'first' was parked before the limit's worth of plans that followed it.
+    state().openPlan('first', plan('first', 'first edited'));
+    expect(state().canUndo()).toBe(false);
+  });
+
+  it('forgets a deleted plan stack', () => {
+    state().openPlan('a', plan('A', 'a'));
+    state().setNoteText('n-a', 'a edited');
+    state().openPlan('b', plan('B', 'b'));
+
+    state().forgetPlan('a');
+    state().openPlan('a', plan('A', 'a edited'));
+    expect(state().canUndo()).toBe(false);
+  });
+
+  it('holds the plan list for the switcher', () => {
+    state().setPlans([{ id: 'a', name: 'A', updatedAt: 1 }]);
+    expect(state().plans.map((p) => p.name)).toEqual(['A']);
   });
 });
