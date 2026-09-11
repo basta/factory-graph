@@ -10,7 +10,7 @@ import {
   useGraphStore,
 } from './graph/store.ts';
 import { emptyGraph, type GraphNode, type Position } from './graph/types.ts';
-import { loadLocal, saveLocal } from './graph/persist.ts';
+import { createAutosave, flushOnHide, loadLocal, saveLocal } from './graph/persist.ts';
 import { clearLocationHash, documentFromLocation, shareUrl } from './graph/url.ts';
 import { exportDocument, importDocument } from './graph/file.ts';
 import { autoLayout } from './graph/layout.ts';
@@ -111,9 +111,20 @@ function Editor({ index }: { index: GameIndex }): JSX.Element {
 
   // --- autosave ------------------------------------------------------------
   // The document is already in the store by the time this component mounts.
+  // Writes are debounced because a node drag rewrites `positions` on every
+  // pointer move; `flushOnHide` is what makes that safe, by writing the
+  // pending document before the page can go away with it unsaved.
+  const autosave = useMemo(() => createAutosave(saveLocal), []);
   useEffect(() => {
-    saveLocal({ graph, projectName });
-  }, [graph, projectName]);
+    const off = flushOnHide(autosave.flush);
+    return () => {
+      off();
+      autosave.flush();
+    };
+  }, [autosave]);
+  useEffect(() => {
+    autosave.schedule({ graph, projectName });
+  }, [autosave, graph, projectName]);
 
   // --- adding nodes --------------------------------------------------------
   const openSearchAtScreen = useCallback(
