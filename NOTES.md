@@ -620,3 +620,181 @@ the nodes as well.
 - **Multi-recipe blocks.** Stamping out a whole cell — cable and circuits
   together — needs grouping, collapse and layout inside a group. Single-node
   blocks cover planning one recipe at a time back from a sink.
+
+## M8 — Fewer clicks
+
+Counted first. A plan from a sink — 45/s of green circuits on assembler 2s and red
+belts, plates off a bus — took about 22 clicks and 4 drags, and 16 of the clicks
+were belts. Almost none of them were decisions; they were the same decision repeated
+per node and per connection. Everything below is aimed at that count, and it is now
+`Ctrl K`, "electronic circuit", `Shift Enter`, `45`, `Enter`, `E`, `E`, plus one
+click on the plan bar for red belts.
+
+### Plan settings
+
+The choices made once per base: belt, assembler tier, furnace tier, unit, bus items.
+They live on the graph, so they travel in share links and undo with everything else,
+and a new plan starts from whatever the last change left.
+
+- **Changing one moves what followed it.** Connections on the old belt go to the new
+  one and machines on the old tier go to the new tier, in one undo step. Anything set
+  by hand to something else is left alone, which is what makes "this plan is on red
+  belts now" one click instead of one per connection — and what keeps the one blue
+  belt you set on purpose.
+- **The plan's machine comes before the data set's ranking.** The ranking put the
+  electromagnetic plant first for circuits and cable, which no early base has. A recipe
+  none of the plan's machines can make still falls back to the ranking.
+- **Older plans read as yellow belts, assembler 2s and steel furnaces** — an early-mid
+  game base, where most planning happens.
+- **Rates are still stored per second.** `/min` only changes what is shown and what the
+  rate fields take.
+
+### Expand
+
+`E` builds a producer for every unconnected input of the selection and selects the
+new nodes, so `E` again goes one step further up. Bus items are skipped; that is
+where a chain planned off a main bus stops. A sink's own item is always built.
+
+The recipe is picked without asking when there is only one sane answer: the recipe
+named after the item, a sole standard recipe, or mining for an ore. Thirteen items
+have a real choice — petroleum gas, solid fuel, uranium, a handful of Space Age
+fluids — and Expand opens the search for those rather than guessing.
+
+### The search was suggesting recycling
+
+"Standard" leaves out recycling and barrels. Writing that rule for Expand turned up
+a bug in the search: dragging from an iron plate input listed producers in data order,
+and the data has forty-odd recycling recipes for iron plate ahead of the furnace. So
+"drag, Enter" built a firearm magazine recycler. Continuing a connection now lists
+nodes already on the canvas, then the main recipe, then other standard ones, with
+recycling and barrels last.
+
+### Smaller things
+
+- `Shift Enter` in the search adds the row's item as a sink, fixed, with its rate field
+  focused — the next thing typed is the rate.
+- `1`–`4` on selected connections set the belt tier, `0` removes it; on selected nodes
+  `1`–`3` set the tier within the machine's family.
+- Double-click a machine count or a rate to type it in place.
+- A connection's label shows its belt's sprite and selects the connection when clicked.
+  React Flow's label layer ignores the pointer by default, which is why the first try
+  did nothing; the label opts back in with `pointer-events: all` and stops the click
+  before the canvas reads it as a click on empty space.
+
+### Learning the keys
+
+Shortcuts nobody knows about save nobody any clicks, and a list behind `?` gets read
+once. So a strip along the bottom of the canvas shows the three or four keys that fit
+the selection — select a recipe and it says `E` builds inputs, select a connection and
+it says `1`–`4` set the belt — and changes as the selection does. A test holds every
+key it shows to one the shortcuts list documents, so it cannot advertise a key that
+does nothing. It hides with its own ×, remembered per browser, and the shortcuts list
+has the switch to bring it back.
+
+The first cut tried five hints for a recipe and clipped mid-word once the inspector
+took its 320px — and clipped the close button with it. Four hints, and the close
+button outside the part that clips.
+
+Mouse users meet the keys too: the inspector grew a *Build inputs* button carrying an
+`E` key cap, and the controls that have a key say so in their tooltip.
+
+The same screenshots showed the label wart from M7 got worse: with a node selected,
+React Flow lifts its connections above the label layer, so the line ran through the
+very labels that now carry the belt sprite. `elevateEdgesOnSelect` is off. It only
+ever mattered where two connections cross.
+
+### Staging
+
+All of this went to a staging site first, at `/staging/` — see the README. It shares
+`localStorage` with the live site, so it uses its own keys and starts from a copy of
+the live plans rather than editing them.
+
+## M9 — Fan-out
+
+One furnace feeding four consumers drew four connections up one shared vertical line,
+each turning halfway to its own target — so all four labels sat on that one line,
+stacked, none of them obviously belonging to the consumer it described. Consumers at
+different distances were worse: one vertical line each, side by side.
+
+A port with more than one connection is now drawn as a manifold. The spine sits a
+fixed 36px from the shared port rather than halfway to each target, so every branch
+uses the same one; a junction dot marks where the branches leave it; and each label
+moves onto the run that is that branch's alone, next to its consumer. A fan-in — several
+producers into one port — is the mirror image, with the labels by the producers.
+A branch whose target is too close or behind its source keeps the ordinary route.
+
+`shots/m10-fanout-before.png` and `m10-fanout-after.png` are the `fan-out` fixture;
+`m10-fanout-mixed.png` staggers the consumers and adds a fan-in.
+
+## M10 — Auto-layout for the routing
+
+With manifolds in, `Ctrl L` was the weak link. ELK was laying out node *centres* while
+connections attach at port rows, so after a layout nearly every connection had a small
+jog in it; and the 120px between columns left a manifold branch no room for its label.
+
+Judged by numbers this time, not screenshots. `scoreLayout` traces each connection the
+way the canvas draws it and counts bent connections, connections running behind a node
+they do not touch, labels landing on a label or a node, and pairs of connections drawn
+along the same stretch of line. Run over the fixtures and a red-and-green-science tree
+built with Expand down to ore (26 nodes):
+
+```
+                 bent       through   label clashes
+                 old  new   old new   old new
+science  (24)    23   7     0   0     0   0
+tangle   (10)    8    4     2   0     4   0
+fan-out   (4)    4    3     0   0     4   0
+kovarex   (3)    3    1     0   0     3   0
+```
+
+- **Ports.** Each node now hands ELK its ports at their real row offsets
+  (`portConstraints: FIXED_POS`), so it lines ports up rather than centres. This alone
+  took the science tree from 23 bent connections to 6.
+- **180px between columns**, for a 36px spine plus a branch long enough to carry its
+  label clear of the next node. At 120 the fan-out labels sat on the nodes.
+- **Network simplex placement.** Brandes-Köpf left two connections in `tangle` running
+  behind unrelated nodes; network simplex was the only placement that never did, for
+  at most one more bend. Balanced alignment, extra crossing-minimisation passes, edge
+  merging and laying out from scratch were all tried and none did better — from scratch
+  did worse, as well as reshuffling what the user was reading.
+
+A fan-out is never all straight: one producer lines up with one of its consumers.
+
+What is left: one pair of connections in `tangle` shares a few pixels of line, because
+each connection still picks where to turn on its own. Routing them with knowledge of each
+other — or keeping ELK's own routes until a node moves — is the next step if it matters.
+
+ELK throws on a connection to a port it was not given, so a connection whose item no
+longer matches its node (the solver already ignores those) sits the layout out.
+
+`channel.ts` also stopped assuming Vite: under plain Node, as in a script, there is no
+`import.meta.env` at all, and that now reads as the live channel instead of throwing.
+
+## M11 — Routing all connections together
+
+A screenshot from use: casting iron and casting copper cable, stacked in one column,
+each feeding the same two circuit blocks. Both manifold spines sat 36px out from ports
+at the same x — one line, two fan-outs, no telling them apart — and on each circuit the
+iron and copper labels, one 18px row apart and 25px tall, sat on top of each other.
+The `two-fanouts` fixture is that plan.
+
+Both problems were the same one: every connection picked its route alone. A routing
+pass (`routingPlan.ts`) now decides them together, once per graph change, and each
+connection draws from its entry:
+
+- **Spine lanes.** Fan-outs and fan-ins are placed first, then single elbows, top to
+  bottom. Each takes the first candidate position — 36px out, then 14px further per
+  lane; for an elbow, halfway, then 14px either side — where its vertical run does not
+  sit on another's and none of its horizontal runs shares a stretch with a different
+  flow. That also cleared the one shared stretch in `tangle` that M10 left.
+- **Labels.** Each label tries the middle of its own run, then points along it, then
+  the same just above or below the line, and takes the first that overlaps no label
+  and no node. Leaving the line costs a little, so it only happens when it buys room.
+
+The plan is relative — how far out a spine sits, how far along its run a label goes —
+so it is applied to React Flow's own handle positions and the lines always meet the
+ports. It is memoised on the graph object, and an entry that did not change keeps its
+identity, so moving one node does not re-render every connection. `scoreLayout` traces
+from the same plan, so the score is of what is on screen; across the fixtures and the
+science tree, shared stretches went to zero, and label clashes from 24 to 2 on the
+science tree (two runs too short for a label anywhere).

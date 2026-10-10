@@ -1,0 +1,9 @@
+/* Sits where the figure was, the same size, on the inspector's underline. */
+.input {
+  width: 6ch;
+  padding: 0;
+  text-align: right;
+  color: var(--ink);
+  background: transparent;
+  border-bottom: 1px solid var(--copper);
+}

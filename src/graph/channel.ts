@@ -9,7 +9,9 @@
  */
 export type Channel = 'live' | 'staging';
 
-export const CHANNEL: Channel = import.meta.env.VITE_CHANNEL === 'staging' ? 'staging' : 'live';
+// `import.meta.env` is Vite's; under plain Node (scripts, tools) it is absent,
+// and that is the live channel.
+export const CHANNEL: Channel = import.meta.env?.VITE_CHANNEL === 'staging' ? 'staging' : 'live';
 
 export const storagePrefix = (channel: Channel): string =>
   channel === 'staging' ? 'factory-graph-staging:' : 'factory-graph:';

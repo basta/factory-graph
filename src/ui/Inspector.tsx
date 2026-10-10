@@ -9,6 +9,8 @@ import { NumberField } from './NumberField.tsx';
 import { PickerRow } from './PickerRow.tsx';
 import { Sprite } from './Sprite.tsx';
 import { perBlock, pollution, power, rate } from './format.ts';
+import { useFlow } from './units.ts';
+import { useFocusRequest } from './focus.ts';
 import styles from './Inspector.module.css';
 
 interface Props {
@@ -17,6 +19,8 @@ interface Props {
   /** Edge ids currently selected; used only when no node is selected. */
   selectedEdges: string[];
   onClose: () => void;
+  /** Expand, the same as pressing E. */
+  onExpand: () => void;
 }
 
 /**
@@ -24,7 +28,7 @@ interface Props {
  * shows only the fields the selection has in common and applies an edit to
  * every one of them.
  */
-export function Inspector({ selection, selectedEdges, onClose }: Props): JSX.Element {
+export function Inspector({ selection, selectedEdges, onClose, onExpand }: Props): JSX.Element {
   const index = useGameData();
   // Select the stable array and narrow it here: a selector that builds a new
   // array on every store read never settles under useSyncExternalStore.
@@ -119,6 +123,13 @@ export function Inspector({ selection, selectedEdges, onClose }: Props): JSX.Ele
 
           {nodes.length > 0 ? (
             <div className={styles.footer}>
+              {nodes.some((node) => node.kind === 'recipe' || node.kind === 'sink') ? (
+                // The button is for finding Expand; the key cap is for never
+                // needing the button again.
+                <button type="button" className={styles.action} onClick={onExpand}>
+                  Build inputs <kbd className={styles.kbd}>E</kbd>
+                </button>
+              ) : null}
               <button type="button" className={styles.remove} onClick={() => removeNodes(selection)}>
                 Delete {nodes.length === 1 ? 'node' : `${nodes.length} nodes`}
               </button>
@@ -513,7 +524,7 @@ function MachineConstraint({ nodes }: { nodes: RecipeNode[] }): JSX.Element {
     <>
       <div className={styles.row}>
         <span className={styles.label}>Machine count</span>
-        <button type="button" className={styles.toggle} onClick={toggle}>
+        <button type="button" className={styles.toggle} onClick={toggle} title="F toggles this">
           {fixed ? 'Fixed' : 'Solved'}
         </button>
       </div>
@@ -535,6 +546,9 @@ function MachineConstraint({ nodes }: { nodes: RecipeNode[] }): JSX.Element {
 }
 
 function RateConstraint({ nodes }: { nodes: GraphNode[] }): JSX.Element {
+  const flow = useFlow();
+  const focusFor = useFocusRequest((state) => state.nodeId);
+  const clearFocus = useFocusRequest((state) => state.clear);
   const setConstraint = useGraphStore((state) => state.setConstraint);
   const beginBatch = useGraphStore((state) => state.beginBatch);
   const endBatch = useGraphStore((state) => state.endBatch);
@@ -557,17 +571,21 @@ function RateConstraint({ nodes }: { nodes: GraphNode[] }): JSX.Element {
           type="button"
           className={styles.toggle}
           onClick={() => apply(fixed ? { type: 'free' } : { type: 'rate', perSec: 1 })}
+          title="F toggles this"
         >
           {fixed ? 'Fixed' : 'Solved'}
         </button>
       </div>
       {fixed && constraint.type === 'rate' ? (
         <NumberField
-          label="Items/s"
-          value={constraint.perSec}
+          label={`Items${flow.suffix}`}
+          // Rounded so 1/3 a second does not show as 19.999999999999996/min.
+          value={Math.round(constraint.perSec * flow.scale * 1e6) / 1e6}
           min={0}
-          step={0.5}
-          onCommit={(next) => apply({ type: 'rate', perSec: next })}
+          step={flow.unit === 'min' ? 1 : 0.5}
+          onCommit={(next) => apply({ type: 'rate', perSec: next / flow.scale })}
+          autoFocus={nodes.length === 1 && focusFor === first?.id}
+          onAutoFocused={clearFocus}
         />
       ) : null}
     </>

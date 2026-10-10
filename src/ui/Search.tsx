@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useGameData } from '../data/context.ts';
-import { defaultMachineFor } from '../data/loader.ts';
+import { preferredMachine, settingsOf } from '../graph/settings.ts';
+import { useGraphStore } from '../graph/store.ts';
+import { recipeOrder } from '../data/recipes.ts';
 import { Sprite } from './Sprite.tsx';
 import { rank } from './fuzzy.ts';
 import styles from './Search.module.css';
@@ -12,14 +14,20 @@ import styles from './Search.module.css';
  */
 export type SearchIntent =
   | { kind: 'anything' }
-  | { kind: 'consumes'; itemId: string }
-  | { kind: 'produces'; itemId: string };
+  /** `nodeId` is where the drag started, so it is not offered back to itself. */
+  | { kind: 'consumes'; itemId: string; nodeId?: string }
+  | { kind: 'produces'; itemId: string; nodeId?: string }
+  /** Picking an item for the plan's bus rather than adding a node. */
+  | { kind: 'bus' };
 
 export type SearchChoice =
   | { kind: 'recipe'; recipeId: string }
   | { kind: 'source'; itemId: string }
   | { kind: 'sink'; itemId: string }
-  | { kind: 'note' };
+  | { kind: 'note' }
+  | { kind: 'bus'; itemId: string }
+  /** A node already on the canvas, to connect rather than duplicate. */
+  | { kind: 'existing'; nodeId: string };
 
 interface Props {
   open: boolean;
@@ -42,6 +50,8 @@ const LIMIT = 40;
 
 export function Search({ open, intent, onClose, onChoose }: Props): JSX.Element | null {
   const index = useGameData();
+  const settings = useGraphStore((state) => settingsOf(state.graph));
+  const graphNodes = useGraphStore((state) => state.graph.nodes);
   const [query, setQuery] = useState('');
   const [active, setActive] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -63,6 +73,17 @@ export function Search({ open, intent, onClose, onChoose }: Props): JSX.Element 
 
   const candidates = useMemo<Row[]>(() => {
     if (!open) return [];
+    if (intent.kind === 'bus') {
+      return index.data.items
+        .filter((item) => item.category !== 'technology')
+        .map((item) => ({
+          choice: { kind: 'bus', itemId: item.id },
+          name: item.name,
+          id: item.id,
+          detail: 'to the bus',
+          icon: item.icon,
+        }));
+    }
     const recipeIds =
       intent.kind === 'anything'
         ? null
@@ -73,10 +94,54 @@ export function Search({ open, intent, onClose, onChoose }: Props): JSX.Element 
           );
 
     const rows: Row[] = [];
-    for (const recipe of index.data.recipes) {
-      if (recipeIds && !recipeIds.has(recipe.id)) continue;
-      if (recipe.producers.length === 0) continue;
-      const machineId = defaultMachineFor(index, recipe);
+
+    // Nodes already on the canvas that fit, first: a shared intermediate
+    // should be one node feeding two consumers, not a copy per consumer.
+    if (intent.kind === 'consumes' || intent.kind === 'produces') {
+      const side = intent.kind === 'produces' ? 'outputs' : 'inputs';
+      for (const node of graphNodes) {
+        if (node.id === intent.nodeId) continue;
+        if (node.kind === 'recipe') {
+          const recipe = index.recipes.get(node.recipeId);
+          if (!recipe?.[side].some((port) => port.itemId === intent.itemId)) continue;
+          rows.push({
+            choice: { kind: 'existing', nodeId: node.id },
+            name: recipe.name,
+            id: `existing-${node.id}`,
+            detail: 'on the canvas',
+            icon: recipe.icon,
+          });
+        } else if (
+          (node.kind === 'source' && intent.kind === 'produces') ||
+          (node.kind === 'sink' && intent.kind === 'consumes')
+        ) {
+          if (node.itemId !== intent.itemId) continue;
+          const item = index.items.get(node.itemId);
+          if (!item) continue;
+          rows.push({
+            choice: { kind: 'existing', nodeId: node.id },
+            name: item.name,
+            id: `existing-${node.id}`,
+            detail: `${node.kind} on the canvas`,
+            icon: item.icon,
+          });
+        }
+      }
+    }
+
+    let recipes = index.data.recipes.filter(
+      (recipe) => (!recipeIds || recipeIds.has(recipe.id)) && recipe.producers.length > 0,
+    );
+    // Continuing a connection: the standard recipe first, recycling and
+    // barrels last, so Enter on an empty query picks what you meant. Sort is
+    // stable, so the data set's order still breaks ties.
+    if (intent.kind === 'consumes' || intent.kind === 'produces') {
+      const order = recipeOrder(index, intent.itemId);
+      recipes = [...recipes].sort((a, b) => order(a) - order(b));
+    }
+    for (const recipe of recipes) {
+      // The machine the node will actually get, which is the plan's pick.
+      const machineId = preferredMachine(index, recipe, settings);
       rows.push({
         choice: { kind: 'recipe', recipeId: recipe.id },
         name: recipe.name,
@@ -123,7 +188,7 @@ export function Search({ open, intent, onClose, onChoose }: Props): JSX.Element 
       });
     }
     return rows;
-  }, [open, intent, index]);
+  }, [open, intent, index, settings, graphNodes]);
 
   const results = useMemo(
     () => rank(candidates, query, (row) => ({ name: row.name, id: row.id }), LIMIT),
@@ -136,6 +201,16 @@ export function Search({ open, intent, onClose, onChoose }: Props): JSX.Element 
   }, [active]);
 
   if (!open) return null;
+
+  // A sink takes the item in, so it only fits where nothing is waiting on an
+  // output from it: the open palette, or continuing out of an output port.
+  const sinkable = intent.kind === 'anything' || intent.kind === 'consumes';
+
+  /** Shift Enter: whatever row is highlighted, add its item as a sink. */
+  const commitAsSink = (indexToUse: number): void => {
+    const itemId = itemOfChoice(results[indexToUse]?.item.choice, index);
+    if (itemId) onChoose({ kind: 'sink', itemId });
+  };
 
   const commit = (indexToUse: number): void => {
     const chosen = results[indexToUse];
@@ -174,7 +249,8 @@ export function Search({ open, intent, onClose, onChoose }: Props): JSX.Element 
               setActive((current) => Math.max(current - 1, 0));
             } else if (event.key === 'Enter') {
               event.preventDefault();
-              commit(active);
+              if (event.shiftKey && sinkable) commitAsSink(active);
+              else commit(active);
             } else if (event.key === 'Escape') {
               event.preventDefault();
               onClose();
@@ -196,7 +272,9 @@ export function Search({ open, intent, onClose, onChoose }: Props): JSX.Element 
                   .filter(Boolean)
                   .join(' ')}
                 onPointerEnter={() => setActive(position)}
-                onClick={() => commit(position)}
+                onClick={(event) =>
+                  event.shiftKey && sinkable ? commitAsSink(position) : commit(position)
+                }
               >
                 {entry.item.icon ? (
                   <Sprite icon={entry.item.icon} size={20} />
@@ -211,19 +289,41 @@ export function Search({ open, intent, onClose, onChoose }: Props): JSX.Element 
             ))
           )}
         </div>
+        {sinkable ? (
+          <p className={styles.footer}>
+            <kbd className={styles.kbd}>Shift</kbd> <kbd className={styles.kbd}>Enter</kbd> adds it
+            as a sink
+          </p>
+        ) : null}
       </div>
     </div>
   );
 }
 
+/**
+ * The item a row stands for: a source or sink's item, or a recipe's main
+ * product — the output named after the recipe, else its first.
+ */
+function itemOfChoice(
+  choice: SearchChoice | undefined,
+  index: ReturnType<typeof useGameData>,
+): string | null {
+  if (!choice || choice.kind === 'note' || choice.kind === 'existing') return null;
+  if (choice.kind !== 'recipe') return choice.itemId;
+  const recipe = index.recipes.get(choice.recipeId);
+  if (!recipe) return null;
+  return (recipe.outputs.find((out) => out.itemId === recipe.id) ?? recipe.outputs[0])?.itemId ?? null;
+}
+
 function itemOf(intent: SearchIntent): string | null {
-  return intent.kind === 'anything' ? null : intent.itemId;
+  return intent.kind === 'consumes' || intent.kind === 'produces' ? intent.itemId : null;
 }
 
 function placeholderFor(intent: SearchIntent, itemName: string | undefined): string {
   const name = (itemName ?? 'this item').toLowerCase();
   if (intent.kind === 'consumes') return `Recipes that use ${name}`;
   if (intent.kind === 'produces') return `Recipes that make ${name}`;
+  if (intent.kind === 'bus') return 'Item to treat as a bus input';
   return 'Search recipes and items';
 }
 

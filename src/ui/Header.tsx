@@ -5,7 +5,8 @@ import type { SolveResult } from '../solver/types.ts';
 import { IconButton } from './Button.tsx';
 import { PlanSwitcher } from './PlanSwitcher.tsx';
 import { Sprite } from './Sprite.tsx';
-import { pollution, power, rate } from './format.ts';
+import { useFlow } from './units.ts';
+import { pollution, power } from './format.ts';
 import {
   ExportIcon,
   HelpIcon,
@@ -51,6 +52,7 @@ export function Header(props: Props): JSX.Element {
   const { data, items } = useGameData();
 
   const result = props.result;
+  const flow = useFlow();
   // A graph with an unbalanced port has totals that do not add up, so say so
   // rather than letting the strip read like a valid bill of materials.
   const unbalanced = Object.values(result?.ports ?? {}).filter(
@@ -114,7 +116,7 @@ export function Header(props: Props): JSX.Element {
               return (
                 <span className={styles.total} key={itemId} title={`${item.name} in`}>
                   <Sprite icon={item.icon} size={16} />
-                  <span className="mono">{rate(value)}/s</span>
+                  <span className="mono">{flow.text(value)}</span>
                 </span>
               );
             })}

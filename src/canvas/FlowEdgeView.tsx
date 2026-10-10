@@ -9,7 +9,11 @@ import {
 import { useGameData } from '../data/context.ts';
 import { useGraphStore } from '../graph/store.ts';
 import { useSolve } from '../solver/context.ts';
-import { percent, rate } from '../ui/format.ts';
+import { percent } from '../ui/format.ts';
+import { Sprite } from '../ui/Sprite.tsx';
+import { useFlow } from '../ui/units.ts';
+import { routeFromPlan } from './routing.ts';
+import { planRoutes } from './routingPlan.ts';
 import styles from './FlowEdgeView.module.css';
 
 export const ARROW_MARKER_ID = 'fg-arrow';
@@ -50,7 +54,12 @@ export const FlowEdgeView = memo(function FlowEdgeView({
 }: EdgeProps): JSX.Element | null {
   const index = useGameData();
   const edge = useGraphStore((state) => state.graph.edges.find((candidate) => candidate.id === id));
+  const setSelection = useGraphStore((state) => state.setSelection);
+  // Where the routing pass put this connection's spine and label, decided
+  // together with every other connection so none of them share a line.
+  const plan = useGraphStore((state) => planRoutes(state.graph, index).get(id));
   const result = useSolve();
+  const flow = useFlow();
   // A self-loop has to clear the node it starts and ends on, so it needs the
   // node's real box rather than just the two handle positions.
   const ownNode = useInternalNode(source);
@@ -63,23 +72,37 @@ export const FlowEdgeView = memo(function FlowEdgeView({
   const saturation = solved?.saturation ?? null;
   const over = saturation !== null && saturation > 1;
 
+  // What it rides on, so the tier reads without opening the inspector.
+  const transport = edge.transport;
+  const transportIcon =
+    transport?.kind === 'belt'
+      ? index.belts.get(transport.beltId)
+      : transport?.kind === 'pipe'
+        ? index.pipes.get(transport.pipeId)
+        : transport?.kind === 'inserter'
+          ? index.inserters.get(transport.inserterId)
+          : undefined;
+
   const isLoop = source === target;
   const nodeTop = ownNode?.internals.positionAbsolute.y ?? sourceY;
   const nodeBottom = nodeTop + (ownNode?.measured.height ?? 0);
   // Lower ports loop wider and deeper, so a node with two self-loops (Kovarex
   // has U-235 and U-238) draws them as two visibly separate paths.
   const spread = Math.max(0, sourceY - nodeTop) * LOOP_STAGGER;
+  const planned = !isLoop && plan ? routeFromPlan(plan, sourceX, sourceY, targetX, targetY) : null;
   const [path, labelX, labelY] = isLoop
     ? loopPath(sourceX, sourceY, targetX, targetY, nodeBottom + LOOP_DROP + spread, spread)
-    : getSmoothStepPath({
-        sourceX,
-        sourceY,
-        targetX,
-        targetY,
-        sourcePosition: sourcePosition ?? Position.Right,
-        targetPosition: targetPosition ?? Position.Left,
-        borderRadius: 6,
-      });
+    : planned
+      ? [planned.path, planned.labelX, planned.labelY]
+      : getSmoothStepPath({
+          sourceX,
+          sourceY,
+          targetX,
+          targetY,
+          sourcePosition: sourcePosition ?? Position.Right,
+          targetPosition: targetPosition ?? Position.Left,
+          borderRadius: 6,
+        });
 
   const tone = over ? 'warn' : selected ? 'brass' : isFluid ? 'fluid' : 'line';
   const marker = {
@@ -101,13 +124,37 @@ export const FlowEdgeView = memo(function FlowEdgeView({
           .join(' ')}
         markerEnd={`url(#${marker})`}
       />
+      {planned?.junction ? (
+        // Marks where the branches leave the spine, so a fan-out reads as one
+        // flow splitting rather than lines that happen to touch.
+        <circle
+          cx={planned.junction.x}
+          cy={planned.junction.y}
+          r={3}
+          className={[styles.junction, styles[tone]].join(' ')}
+        />
+      ) : null}
       <EdgeLabelRenderer>
         <div
-          className={[styles.label, over ? styles.labelWarn : ''].filter(Boolean).join(' ')}
+          // The label is a far bigger target than a 2px line, so it selects
+          // the connection too. `nodrag nopan` keeps React Flow from reading
+          // the press as the start of a pan.
+          className={['nodrag nopan', styles.label, over ? styles.labelWarn : '']
+            .filter(Boolean)
+            .join(' ')}
           style={{ transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)` }}
+          onClick={(event) => {
+            // The canvas would read the click as one on empty space and
+            // clear the selection straight after.
+            event.stopPropagation();
+            const state = useGraphStore.getState();
+            const others = event.shiftKey ? state.selectedEdges.filter((other) => other !== id) : [];
+            setSelection(event.shiftKey ? state.selection : [], [...others, id]);
+          }}
         >
-          <span className="mono">
-            {solved ? `${rate(solved.perSec)}/s` : '—'}
+          <span className={`mono ${styles.line}`}>
+            {transportIcon ? <Sprite icon={transportIcon.icon} size={16} title={transportIcon.name} /> : null}
+            {solved ? flow.text(solved.perSec) : '—'}
             {/* One belt per block: `×6` is six belts side by side. */}
             {solved && solved.parallel > 1 ? (
               <span className={styles.parallel}> ×{solved.parallel}</span>

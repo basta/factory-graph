@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { autoLayout } from './layout.ts';
+import { scoreLayout } from './layoutQuality.ts';
 import { graphOf, testGameData } from '../solver/fixtures.ts';
 import type { GraphNode } from './types.ts';
 
@@ -77,6 +78,45 @@ describe('auto-layout', () => {
     );
     const positions = await autoLayout(graph, index);
     expect(Object.keys(positions)).toEqual(['kov']);
+  });
+
+  it('lines ports up, so a chain runs straight', async () => {
+    const graph = graphOf(
+      [
+        recipe('plate', 'iron-plate', 'electric-furnace'),
+        recipe('gear', 'iron-gear-wheel', 'assembling-machine-3'),
+        recipe('belt', 'transport-belt', 'assembling-machine-3'),
+      ],
+      [link('plate', 'gear', 'iron-plate'), link('gear', 'belt', 'iron-gear-wheel')],
+    );
+    const laid = { ...graph, positions: await autoLayout(graph, index) };
+    // Transport belt takes plates and gears, so only the gear feed can be
+    // straight there — and it is, along with the plate feed into the gears.
+    expect(scoreLayout(laid, index).bent).toBeLessThanOrEqual(1);
+  });
+
+  it("gives a fan-out's labels room, and runs nothing behind a node", async () => {
+    const graph = graphOf(
+      [
+        recipe('plate', 'iron-plate', 'electric-furnace'),
+        recipe('gear', 'iron-gear-wheel', 'assembling-machine-3'),
+        recipe('circuit', 'electronic-circuit', 'assembling-machine-3'),
+        recipe('pipe', 'pipe', 'assembling-machine-3'),
+        recipe('stick', 'iron-stick', 'assembling-machine-3'),
+      ],
+      ['gear', 'circuit', 'pipe', 'stick'].map((to) => link('plate', to, 'iron-plate')),
+    );
+    const score = scoreLayout({ ...graph, positions: await autoLayout(graph, index) }, index);
+    expect(score.labelClashes).toBe(0);
+    expect(score.throughNodes).toBe(0);
+  });
+
+  it('leaves out a connection to a port the node does not have', async () => {
+    const graph = graphOf(
+      [recipe('plate', 'iron-plate', 'electric-furnace'), recipe('gear', 'iron-gear-wheel', 'assembling-machine-3')],
+      [link('plate', 'gear', 'copper-plate')],
+    );
+    expect(Object.keys(await autoLayout(graph, index)).sort()).toEqual(['gear', 'plate']);
   });
 
   it('handles a 60-node graph', async () => {

@@ -159,6 +159,53 @@ const FIXTURES: Record<string, { projectName: string; graph: Graph }> = {
   'over-belt': overBelt(),
   blocks: overBelt({ type: 'fit' }),
 
+  /** One furnace feeding four consumers: the fan-out that tangles. */
+  'fan-out': {
+    projectName: 'Iron plate fan-out',
+    graph: build(
+      [
+        recipe('plate', 'iron-plate', 'steel-furnace', { x: 0, y: 230 }),
+        recipe('gear', 'iron-gear-wheel', 'assembling-machine-2', { x: 480, y: 0 }, { machines: 4 }),
+        recipe('circuit', 'electronic-circuit', 'assembling-machine-2', { x: 480, y: 150 }, {
+          machines: 6,
+        }),
+        recipe('pipe', 'pipe', 'assembling-machine-2', { x: 480, y: 320 }, { machines: 2 }),
+        recipe('stick', 'iron-stick', 'assembling-machine-2', { x: 480, y: 450 }, { machines: 2 }),
+      ],
+      [
+        link('plate', 'gear', 'iron-plate', { kind: 'belt', beltId: 'transport-belt', lanes: 2 }),
+        link('plate', 'circuit', 'iron-plate', { kind: 'belt', beltId: 'transport-belt', lanes: 2 }),
+        link('plate', 'pipe', 'iron-plate', { kind: 'belt', beltId: 'transport-belt', lanes: 2 }),
+        link('plate', 'stick', 'iron-plate', { kind: 'belt', beltId: 'transport-belt', lanes: 2 }),
+      ],
+    ),
+  },
+
+  /**
+   * Two producers in one column, each feeding the same two consumers: the
+   * case where two manifolds' spines land on one line and the labels on a
+   * consumer's adjacent input rows stack.
+   */
+  'two-fanouts': {
+    projectName: 'Foundry circuits',
+    graph: build(
+      [
+        recipe('iron', 'casting-iron', 'foundry', { x: 0, y: 0 }, { machines: 4 }),
+        recipe('cable', 'casting-copper-cable', 'foundry', { x: 0, y: 240 }),
+        recipe('top', 'electronic-circuit', 'assembling-machine-2', { x: 490, y: 8 }, { machines: 5 }),
+        recipe('bottom', 'electronic-circuit', 'assembling-machine-2', { x: 480, y: 268 }, {
+          machines: 5,
+        }),
+      ],
+      [
+        link('iron', 'top', 'iron-plate', { kind: 'belt', beltId: 'transport-belt', lanes: 2 }),
+        link('iron', 'bottom', 'iron-plate', { kind: 'belt', beltId: 'transport-belt', lanes: 2 }),
+        link('cable', 'top', 'copper-cable', { kind: 'belt', beltId: 'transport-belt', lanes: 2 }),
+        link('cable', 'bottom', 'copper-cable', { kind: 'belt', beltId: 'transport-belt', lanes: 2 }),
+      ],
+    ),
+  },
+
   /** Kovarex: a node feeding its own input port, plus the U-238 loop. */
   kovarex: {
     projectName: 'Kovarex loop',

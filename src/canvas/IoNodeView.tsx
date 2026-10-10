@@ -1,10 +1,11 @@
-import { memo } from 'react';
+import { memo, useState } from 'react';
 import { useGameData } from '../data/context.ts';
 import { useGraphStore } from '../graph/store.ts';
 import { portKey } from '../graph/types.ts';
 import { useSolve } from '../solver/context.ts';
 import { Sprite } from '../ui/Sprite.tsx';
-import { rate } from '../ui/format.ts';
+import { useFlow } from '../ui/units.ts';
+import { InlineNumber } from './InlineNumber.tsx';
 import { nodeShape } from './geometry.ts';
 import { PortHandle } from './PortHandle.tsx';
 import { useConnecting } from './connecting.ts';
@@ -27,9 +28,12 @@ export const IoNodeView = memo(function IoNodeView({ data, selected }: Props): J
     state.graph.nodes.find((candidate) => candidate.id === data.nodeId),
   );
   const result = useSolve();
+  const flow = useFlow();
   const connectingNodeId = useConnecting((state) => state.nodeId);
   const connectingItemId = useConnecting((state) => state.itemId);
   const connectingSide = useConnecting((state) => state.side);
+  const setConstraint = useGraphStore((state) => state.setConstraint);
+  const [editing, setEditing] = useState(false);
 
   if (!node || (node.kind !== 'source' && node.kind !== 'sink')) return null;
 
@@ -64,14 +68,24 @@ export const IoNodeView = memo(function IoNodeView({ data, selected }: Props): J
       </div>
       <div className={styles.body}>
         <span className={styles.kind}>{isSource ? 'Source' : 'Sink'}</span>
-        <span
-          className={['mono', styles.rate, pinned ? styles.pinned : ''].join(' ')}
-          title={
-            constraint.type === 'rate' ? `Fixed at ${rate(constraint.perSec)}/s` : 'Solved rate'
-          }
-        >
-          {value === null ? '—' : `${rate(value)}/s`}
-        </span>
+        {editing ? (
+          <InlineNumber
+            initial={(value ?? 0) * flow.scale}
+            // Typing a rate fixes it, the same as the inspector's field.
+            onCommit={(typed) => setConstraint(node.id, { type: 'rate', perSec: typed / flow.scale })}
+            onDone={() => setEditing(false)}
+          />
+        ) : (
+          <span
+            className={['mono', styles.rate, pinned ? styles.pinned : ''].join(' ')}
+            title={`${
+              constraint.type === 'rate' ? `Fixed at ${flow.text(constraint.perSec)}` : 'Solved rate'
+            }. Double-click to type one.`}
+            onDoubleClick={() => setEditing(true)}
+          >
+            {value === null ? '—' : flow.text(value)}
+          </span>
+        )}
       </div>
       {port ? (
         <PortHandle

@@ -85,3 +85,20 @@
 .description {
   color: var(--ink-muted);
 }
+
+/* Below the groups, on the panel's own hairline. */
+.toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-top: 1px solid var(--line);
+  color: var(--ink-muted);
+  cursor: pointer;
+}
+
+.toggle input {
+  accent-color: var(--copper);
+  width: 13px;
+  height: 13px;
+}
