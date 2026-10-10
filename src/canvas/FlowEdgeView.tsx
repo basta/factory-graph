@@ -12,6 +12,7 @@ import { useSolve } from '../solver/context.ts';
 import { percent } from '../ui/format.ts';
 import { Sprite } from '../ui/Sprite.tsx';
 import { useFlow } from '../ui/units.ts';
+import { manifoldRoute } from './routing.ts';
 import styles from './FlowEdgeView.module.css';
 
 export const ARROW_MARKER_ID = 'fg-arrow';
@@ -53,6 +54,19 @@ export const FlowEdgeView = memo(function FlowEdgeView({
   const index = useGameData();
   const edge = useGraphStore((state) => state.graph.edges.find((candidate) => candidate.id === id));
   const setSelection = useGraphStore((state) => state.setSelection);
+  // Whether this connection shares its output port with others (a fan-out)
+  // or its input port (a fan-in). A primitive, so the selector settles.
+  const shared = useGraphStore((state): 'out' | 'in' | null => {
+    const self = state.graph.edges.find((candidate) => candidate.id === id);
+    if (!self) return null;
+    let out = 0;
+    let into = 0;
+    for (const other of state.graph.edges) {
+      if (other.from === self.from && other.fromPort === self.fromPort) out += 1;
+      if (other.to === self.to && other.toPort === self.toPort) into += 1;
+    }
+    return out > 1 ? 'out' : into > 1 ? 'in' : null;
+  });
   const result = useSolve();
   const flow = useFlow();
   // A self-loop has to clear the node it starts and ends on, so it needs the
@@ -84,17 +98,20 @@ export const FlowEdgeView = memo(function FlowEdgeView({
   // Lower ports loop wider and deeper, so a node with two self-loops (Kovarex
   // has U-235 and U-238) draws them as two visibly separate paths.
   const spread = Math.max(0, sourceY - nodeTop) * LOOP_STAGGER;
+  const manifold = !isLoop && shared ? manifoldRoute(shared, sourceX, sourceY, targetX, targetY) : null;
   const [path, labelX, labelY] = isLoop
     ? loopPath(sourceX, sourceY, targetX, targetY, nodeBottom + LOOP_DROP + spread, spread)
-    : getSmoothStepPath({
-        sourceX,
-        sourceY,
-        targetX,
-        targetY,
-        sourcePosition: sourcePosition ?? Position.Right,
-        targetPosition: targetPosition ?? Position.Left,
-        borderRadius: 6,
-      });
+    : manifold
+      ? [manifold.path, manifold.labelX, manifold.labelY]
+      : getSmoothStepPath({
+          sourceX,
+          sourceY,
+          targetX,
+          targetY,
+          sourcePosition: sourcePosition ?? Position.Right,
+          targetPosition: targetPosition ?? Position.Left,
+          borderRadius: 6,
+        });
 
   const tone = over ? 'warn' : selected ? 'brass' : isFluid ? 'fluid' : 'line';
   const marker = {
@@ -116,6 +133,16 @@ export const FlowEdgeView = memo(function FlowEdgeView({
           .join(' ')}
         markerEnd={`url(#${marker})`}
       />
+      {manifold?.junction ? (
+        // Marks where the branches leave the spine, so a fan-out reads as one
+        // flow splitting rather than lines that happen to touch.
+        <circle
+          cx={manifold.junction.x}
+          cy={manifold.junction.y}
+          r={3}
+          className={[styles.junction, styles[tone]].join(' ')}
+        />
+      ) : null}
       <EdgeLabelRenderer>
         <div
           // The label is a far bigger target than a 2px line, so it selects

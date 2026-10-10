@@ -708,3 +708,20 @@ ever mattered where two connections cross.
 All of this went to a staging site first, at `/staging/` — see the README. It shares
 `localStorage` with the live site, so it uses its own keys and starts from a copy of
 the live plans rather than editing them.
+
+## M9 — Fan-out
+
+One furnace feeding four consumers drew four connections up one shared vertical line,
+each turning halfway to its own target — so all four labels sat on that one line,
+stacked, none of them obviously belonging to the consumer it described. Consumers at
+different distances were worse: one vertical line each, side by side.
+
+A port with more than one connection is now drawn as a manifold. The spine sits a
+fixed 36px from the shared port rather than halfway to each target, so every branch
+uses the same one; a junction dot marks where the branches leave it; and each label
+moves onto the run that is that branch's alone, next to its consumer. A fan-in — several
+producers into one port — is the mirror image, with the labels by the producers.
+A branch whose target is too close or behind its source keeps the ordinary route.
+
+`shots/m10-fanout-before.png` and `m10-fanout-after.png` are the `fan-out` fixture;
+`m10-fanout-mixed.png` staggers the consumers and adds a fan-in.

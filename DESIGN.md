@@ -135,6 +135,11 @@ a transport is set a 2px saturation bar sits directly under the label, filling
 left-to-right in `--brass`, switching the bar *and* the label *and* the path to `--warn`
 above 100 %. When blocks put several belts side by side the label adds a `--ink-muted`
 `×6` after the rate, and the bar measures one of those belts, not all of them as one.
+When one port feeds several others — or several feed one — the connections are drawn
+as a manifold: one spine 36px from the shared port, a 3px junction dot where the
+branches leave it, and each branch's label on the run that belongs only to it, beside
+its own consumer (or producer). Smoothstep would stack every label on one shared line.
+
 The label leads with a 16px sprite of the belt, pipe or inserter, so the tier reads
 without selecting anything, and the label itself is clickable: it selects the
 connection, and its border turns `--brass` on hover the way the line does.

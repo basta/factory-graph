@@ -20,6 +20,25 @@
   stroke: var(--warn);
 }
 
+/* Filled with the line's own colour: the tone classes set stroke, this
+   borrows it. */
+.junction {
+  fill: var(--line);
+  stroke: none;
+}
+
+.junction.brass {
+  fill: var(--brass);
+}
+
+.junction.fluid {
+  fill: var(--fluid);
+}
+
+.junction.warn {
+  fill: var(--warn);
+}
+
 .hitArea {
   stroke: transparent;
   stroke-width: 14;

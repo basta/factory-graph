@@ -159,6 +159,28 @@ const FIXTURES: Record<string, { projectName: string; graph: Graph }> = {
   'over-belt': overBelt(),
   blocks: overBelt({ type: 'fit' }),
 
+  /** One furnace feeding four consumers: the fan-out that tangles. */
+  'fan-out': {
+    projectName: 'Iron plate fan-out',
+    graph: build(
+      [
+        recipe('plate', 'iron-plate', 'steel-furnace', { x: 0, y: 230 }),
+        recipe('gear', 'iron-gear-wheel', 'assembling-machine-2', { x: 480, y: 0 }, { machines: 4 }),
+        recipe('circuit', 'electronic-circuit', 'assembling-machine-2', { x: 480, y: 150 }, {
+          machines: 6,
+        }),
+        recipe('pipe', 'pipe', 'assembling-machine-2', { x: 480, y: 320 }, { machines: 2 }),
+        recipe('stick', 'iron-stick', 'assembling-machine-2', { x: 480, y: 450 }, { machines: 2 }),
+      ],
+      [
+        link('plate', 'gear', 'iron-plate', { kind: 'belt', beltId: 'transport-belt', lanes: 2 }),
+        link('plate', 'circuit', 'iron-plate', { kind: 'belt', beltId: 'transport-belt', lanes: 2 }),
+        link('plate', 'pipe', 'iron-plate', { kind: 'belt', beltId: 'transport-belt', lanes: 2 }),
+        link('plate', 'stick', 'iron-plate', { kind: 'belt', beltId: 'transport-belt', lanes: 2 }),
+      ],
+    ),
+  },
+
   /** Kovarex: a node feeding its own input port, plus the U-238 loop. */
   kovarex: {
     projectName: 'Kovarex loop',
