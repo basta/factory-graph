@@ -1,7 +1,7 @@
 import type { GameIndex } from '../data/loader.ts';
-import type { PortKey, SolverGraph } from '../graph/types.ts';
+import type { FlowEdge, PortKey, RecipeNode, SolverGraph } from '../graph/types.ts';
 import { buildLp, runLp } from './lp.ts';
-import { PIPE_THROUGHPUT_PER_SEC } from './rates.ts';
+import { lineCapacity, linesNeeded } from './rates.ts';
 import type { EdgeResult, NodeResult, PortResult, SolveResult } from './types.ts';
 import { emptySolveResult } from './types.ts';
 
@@ -33,6 +33,31 @@ function bump(into: Record<string, number>, key: string, amount: number): void {
 }
 
 /**
+ * How many identical copies a node is built as. `fit` splits until one belt or
+ * pipe of each kind on the node's connections is enough for a block, so it is
+ * a function of the solved rates and moves with the sink. Connections without
+ * a belt or pipe have nothing to fit and are skipped.
+ */
+function blockCount(
+  node: RecipeNode,
+  edges: readonly FlowEdge[],
+  flows: ReadonlyMap<string, number>,
+  index: GameIndex,
+): number {
+  const blocks = node.blocks;
+  if (!blocks) return 1;
+  if (blocks.type === 'count') return Math.max(1, Math.round(blocks.count));
+  let needed = 1;
+  for (const edge of edges) {
+    if (edge.from !== node.id && edge.to !== node.id) continue;
+    const capacity = lineCapacity(edge.transport, index);
+    if (capacity === null) continue;
+    needed = Math.max(needed, linesNeeded(flows.get(edge.id) ?? 0, capacity));
+  }
+  return needed;
+}
+
+/**
  * Solves a graph. Synchronous and pure: same graph in, same numbers out.
  *
  * Takes only the nodes and edges, never the positions — so moving a node
@@ -53,6 +78,11 @@ export function solve(graph: SolverGraph, index: GameIndex): SolveResult {
   const values = solution.values;
   const result: SolveResult = emptySolveResult('ok');
 
+  // Edge flows come first: a node that fits its blocks to its belts needs to
+  // know what those belts carry.
+  const flows = new Map<string, number>();
+  for (const edge of build.edges) flows.set(edge.id, clean(values[`f|${edge.id}`]));
+
   // --- nodes ---------------------------------------------------------------
   for (const [nodeId, spec] of build.nodes) {
     if (spec.node.kind === 'note') continue;
@@ -68,7 +98,10 @@ export function solve(graph: SolverGraph, index: GameIndex): SolveResult {
         ? spec.node.constraint.count * spec.craftsPerSecPerMachine
         : clean(values[`c|${nodeId}`]);
     const machines = spec.craftsPerSecPerMachine > 0 ? craftsPerSec / spec.craftsPerSecPerMachine : 0;
-    const machinesCeil = Math.ceil(machines - EPSILON);
+    const blocks = blockCount(spec.node, build.edges, flows, index);
+    // Every block is built whole, so the rounding happens per block: 29
+    // machines in 5 blocks is 5 × 6.
+    const machinesCeil = blocks * Math.ceil(machines / blocks - EPSILON);
     const rates = spec.rates;
 
     // Active draw scales with the fractional machine count; idle drain and
@@ -84,6 +117,7 @@ export function solve(graph: SolverGraph, index: GameIndex): SolveResult {
       craftsPerSec,
       machines,
       machinesCeil,
+      blocks,
       powerKw,
       pollutionPerMin,
     };
@@ -93,22 +127,25 @@ export function solve(graph: SolverGraph, index: GameIndex): SolveResult {
   }
 
   // --- edges ---------------------------------------------------------------
+  const blocksOf = (id: string): number => result.nodes[id]?.blocks ?? 1;
   for (const edge of build.edges) {
-    const perSec = clean(values[`f|${edge.id}`]);
-    let capacityPerSec: number | null = null;
+    const perSec = flows.get(edge.id) ?? 0;
     const transport = edge.transport;
-    if (transport?.kind === 'belt') {
-      const belt = index.belts.get(transport.beltId);
-      // A belt's rated speed covers both lanes; one lane carries half.
-      if (belt) capacityPerSec = (belt.itemsPerSec * transport.lanes) / 2;
-    } else if (transport?.kind === 'pipe') {
-      capacityPerSec = index.pipes.get(transport.pipeId)?.fluidPerSec ?? PIPE_THROUGHPUT_PER_SEC;
+    const line = lineCapacity(transport, index);
+    let parallel = 1;
+    let capacityPerSec: number | null = null;
+    if (line !== null) {
+      // Each block has its own belt, so the end with more blocks decides how
+      // many run side by side; the other end merges or splits them.
+      parallel = Math.max(blocksOf(edge.from), blocksOf(edge.to));
+      capacityPerSec = line * parallel;
     } else if (transport?.kind === 'inserter') {
       const inserter = index.inserters.get(transport.inserterId);
       if (inserter) capacityPerSec = inserter.itemsPerSec * transport.count;
     }
     const edgeResult: EdgeResult = {
       perSec,
+      parallel,
       capacityPerSec,
       saturation: capacityPerSec && capacityPerSec > 0 ? perSec / capacityPerSec : null,
     };
@@ -121,7 +158,7 @@ export function solve(graph: SolverGraph, index: GameIndex): SolveResult {
     if (!spec) continue;
     const supply = clean(values[`si|${port.key}`]);
     const excess = clean(values[`so|${port.key}`]);
-    const edgeFlow = port.edgeIds.reduce((sum, id) => sum + clean(values[`f|${id}`]), 0);
+    const edgeFlow = port.edgeIds.reduce((sum, id) => sum + (flows.get(id) ?? 0), 0);
 
     let produced: number;
     let consumed: number;

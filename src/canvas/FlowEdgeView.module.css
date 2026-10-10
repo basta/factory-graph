@@ -43,6 +43,10 @@
   pointer-events: none;
 }
 
+.parallel {
+  color: var(--ink-muted);
+}
+
 .labelWarn {
   color: var(--warn);
   border-color: var(--warn);

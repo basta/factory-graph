@@ -1,14 +1,14 @@
 import { useMemo } from 'react';
 import { useGameData } from '../data/context.ts';
 import { useGraphStore } from '../graph/store.ts';
-import type { GraphNode, RecipeNode } from '../graph/types.ts';
+import type { Blocks, GraphNode, RecipeNode } from '../graph/types.ts';
 import { useSolve } from '../solver/context.ts';
-import { blockedEffects } from '../solver/rates.ts';
+import { blockedEffects, lineCapacity } from '../solver/rates.ts';
 import { EdgeInspector } from './EdgeInspector.tsx';
 import { NumberField } from './NumberField.tsx';
 import { PickerRow } from './PickerRow.tsx';
 import { Sprite } from './Sprite.tsx';
-import { pollution, power, rate } from './format.ts';
+import { perBlock, pollution, power, rate } from './format.ts';
 import styles from './Inspector.module.css';
 
 interface Props {
@@ -91,6 +91,15 @@ export function Inspector({ selection, selectedEdges, onClose }: Props): JSX.Ele
                     label="Machines"
                     value={`${rate(result.nodes[recipes[0]!.id]!.machines)} (build ${result.nodes[recipes[0]!.id]!.machinesCeil})`}
                   />
+                  {result.nodes[recipes[0]!.id]!.blocks > 1 ? (
+                    <Field
+                      label="Blocks"
+                      value={perBlock(
+                        result.nodes[recipes[0]!.id]!.blocks,
+                        result.nodes[recipes[0]!.id]!.machines,
+                      )}
+                    />
+                  ) : null}
                   <Field label="Power" value={power(result.nodes[recipes[0]!.id]!.powerKw)} />
                   <Field
                     label="Pollution"
@@ -378,6 +387,101 @@ function RecipeSections({ nodes, multi }: { nodes: RecipeNode[]; multi: boolean 
       <section className={styles.section}>
         <MachineConstraint nodes={nodes} />
       </section>
+
+      <section className={styles.section}>
+        <BlocksControl nodes={nodes} />
+      </section>
+    </>
+  );
+}
+
+type BlockMode = 'one' | Blocks['type'];
+
+const BLOCK_MODES: { value: BlockMode; label: string }[] = [
+  { value: 'one', label: 'One' },
+  { value: 'fit', label: 'Fit belts' },
+  { value: 'count', label: 'Fixed' },
+];
+
+/**
+ * Building a node as several identical copies, each on its own belts. `Fit
+ * belts` is the one that suits planning back from a sink: nothing upstream is
+ * pinned, so the count has to move when the sink does.
+ */
+function BlocksControl({ nodes }: { nodes: RecipeNode[] }): JSX.Element {
+  const index = useGameData();
+  const edges = useGraphStore((state) => state.graph.edges);
+  const setBlocks = useGraphStore((state) => state.setBlocks);
+  const beginBatch = useGraphStore((state) => state.beginBatch);
+  const endBatch = useGraphStore((state) => state.endBatch);
+  const result = useSolve();
+  const first = nodes[0]!;
+  const mode: BlockMode = first.blocks?.type ?? 'one';
+
+  const apply = (next: (node: RecipeNode) => Blocks | null): void => {
+    beginBatch();
+    for (const node of nodes) setBlocks(node.id, next(node));
+    endBatch();
+  };
+
+  const setMode = (nextMode: BlockMode): void => {
+    if (nextMode === 'one') apply(() => null);
+    else if (nextMode === 'fit') apply(() => ({ type: 'fit' }));
+    else {
+      // Start from what the node is already built as, so switching from Fit
+      // to Fixed holds the count rather than jumping. One block is what the
+      // node had before, so offer the first count that actually splits it.
+      apply((node) => ({
+        type: 'count',
+        count: Math.max(2, result?.nodes[node.id]?.blocks ?? 1),
+      }));
+    }
+  };
+
+  // Fit sizes from belts and pipes; with none on any connection there is
+  // nothing to size from, and the node quietly stays one block.
+  const nothingToFit =
+    mode === 'fit' &&
+    !edges.some(
+      (edge) =>
+        (edge.from === first.id || edge.to === first.id) &&
+        lineCapacity(edge.transport, index) !== null,
+    );
+
+  return (
+    <>
+      <div className={styles.row}>
+        <span className={styles.label}>Blocks</span>
+        <div className={styles.segmented}>
+          {BLOCK_MODES.map((option) => (
+            <button
+              key={option.value}
+              type="button"
+              className={[styles.segment, mode === option.value ? styles.segmentOn : '']
+                .filter(Boolean)
+                .join(' ')}
+              aria-pressed={mode === option.value}
+              onClick={() => setMode(option.value)}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+      </div>
+      {first.blocks?.type === 'count' ? (
+        <NumberField
+          label="Count"
+          value={first.blocks.count}
+          min={1}
+          step={1}
+          onCommit={(next) =>
+            apply(() => ({ type: 'count', count: Math.max(1, Math.round(next)) }))
+          }
+        />
+      ) : null}
+      {nothingToFit ? (
+        <p className={styles.hint}>Set a belt on a connection to size the blocks.</p>
+      ) : null}
     </>
   );
 }

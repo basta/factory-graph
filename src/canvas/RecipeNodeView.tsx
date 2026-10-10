@@ -4,7 +4,7 @@ import { useGraphStore } from '../graph/store.ts';
 import { portKey, type RecipeNode } from '../graph/types.ts';
 import { useSolve } from '../solver/context.ts';
 import { Sprite } from '../ui/Sprite.tsx';
-import { rate } from '../ui/format.ts';
+import { perBlock, rate } from '../ui/format.ts';
 import { nodeShape, type Port } from './geometry.ts';
 import { PortHandle } from './PortHandle.tsx';
 import { useConnecting } from './connecting.ts';
@@ -42,11 +42,12 @@ export const RecipeNodeView = memo(function RecipeNodeView({
   const constraint = node.constraint;
   const pinned = constraint.type === 'machines';
 
-  const machineCount = constraint.type === 'machines'
-    ? rate(constraint.count)
-    : solved
-      ? rate(solved.machines)
-      : '—';
+  // A split node reads as blocks × machines in each, the way it is laid out.
+  const blocks = solved?.blocks ?? 1;
+  const machines = constraint.type === 'machines' ? constraint.count : solved?.machines ?? null;
+  const machineCount =
+    machines === null ? '—' : blocks > 1 ? perBlock(blocks, machines) : rate(machines);
+  const inBlocks = blocks > 1 ? `, in ${blocks} blocks` : '';
 
   return (
     <div
@@ -64,8 +65,8 @@ export const RecipeNodeView = memo(function RecipeNodeView({
             className={['mono', styles.count, pinned ? styles.pinned : ''].join(' ')}
             title={
               constraint.type === 'machines'
-                ? `Fixed at ${constraint.count} machines`
-                : 'Solved machine count'
+                ? `Fixed at ${constraint.count} machines${inBlocks}`
+                : `Solved machine count${inBlocks}`
             }
           >
             {machineCount}

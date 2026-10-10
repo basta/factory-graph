@@ -552,3 +552,71 @@ had a count to compare and the old one did not.
 That same gap is real in the product and is still there: pasting a share link
 into the address bar of an already-open tab changes the hash and does nothing,
 because there is no `hashchange` listener. Reloading works. Left alone for now.
+
+## M7 — Blocks
+
+A recipe node can be built as several identical blocks, each with its own belt
+for every item. The friction it removes: a connection that needs more than one
+belt used to mean copying the node by hand, one copy per belt.
+
+### What the copy-per-belt workaround was actually doing
+
+Two free copper-cable nodes feeding twenty circuit assemblers, a yellow belt on
+each connection: the solver gave one copy all 30 machines and the other **zero**,
+and the first belt read 600 %. Flow variables cost nothing in the program and
+belt capacity is never part of it, so a 100/0 split is exactly as optimal as
+50/50. The only way to an even split was pinning every copy — which is the one
+thing you cannot do when you plan back from a sink, because the moment the sink
+changes every pin is wrong.
+
+### The model
+
+- **Blocks are not in the LP.** The solver still solves one total per node; the
+  block count is worked out afterwards from the solved rates. Splitting a node
+  never changes a rate, and a test holds it to that.
+- **`Fit belts` is the mode that matters.** It splits until one belt of every
+  item on the node's connections is enough for a block — the busiest belt or
+  pipe decides. It is a function of the rates, so it follows the sink: 30/s of
+  circuits needs 6 yellow-belt blocks of cable, 45/s needs 9, with nothing
+  re-pinned. `Fixed` is there for when the number is already decided in game.
+- **Inserters are left out of both.** An inserter count is already the total
+  the user typed; multiplying it per block would double-count it.
+- **Building counts round per block.** 29 machines in 5 blocks is 5 × 6 = 30, not 29,
+  and idle drain and beacon power follow that count.
+- **A connection runs one belt per block on the end with more blocks.** Six
+  cable blocks into one circuit node is six belts arriving at one place, which
+  is what you would build. Using the end with fewer would paint that red and push
+  you to split the circuits too, which the game does not require.
+
+### Decisions worth recording
+
+- **"Blocks", not "modules".** Modules already means module slots, one section
+  higher in the same inspector.
+- **The over-capacity warning carries the fix.** It names the producer and a
+  `Split copper cable to fit` button sets it to fit. The producer goes first
+  because, planning back from a sink, it is the node you just added. The edge
+  panel also lists how many belts of each tier the flow needs, which is the sum
+  everyone was doing in their head.
+- **Old plans load unchanged.** `blocks` is optional in the schema, and setting a
+  node back to one block deletes the field rather than leaving `undefined` behind,
+  so a plan that never used blocks saves byte-for-byte as before.
+
+### What the screenshots showed
+
+`shots/m7-over-belt.png`, `m7-split.png`, `m7-blocks-inspector.png`, from the new
+`over-belt` fixture. The first draft of that fixture put yellow belts on every
+connection, so the circuit's own 200 % belts sat in red right next to the one
+being demonstrated; it now has belts only where the story needs them.
+
+They also show a wart that predates this: with an edge or one of its nodes
+selected, React Flow lifts the edge above the label layer, so the line runs
+through its own label. Left alone here: fixing it means stacking the labels above
+the nodes as well.
+
+### Not done
+
+- **Copied nodes still split 100/0.** With blocks there is no need to copy a node
+  per belt, but a graph that already does it solves the same as before.
+- **Multi-recipe blocks.** Stamping out a whole cell — cable and circuits
+  together — needs grouping, collapse and layout inside a group. Single-node
+  blocks cover planning one recipe at a time back from a sink.

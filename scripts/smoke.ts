@@ -340,6 +340,46 @@ async function main(): Promise<void> {
 
     const saturation = await page.locator('aside[aria-label="Node inspector"]').innerText();
     check('and the inspector reports saturation', /Saturation/.test(saturation));
+    check('and how many belts of each tier it needs', /Belts needed/.test(saturation));
+
+    // --- blocks: overload the belt, then split the producer to fit -----------
+    await page.click(`.react-flow__node[data-id="${circuit}"]`, { position: { x: 120, y: 14 } });
+    await page.waitForTimeout(150);
+    await page.fill('input[aria-label="Machines"]', '20');
+    await page.keyboard.press('Enter');
+    await page.waitForTimeout(250);
+    await page.click(`.react-flow__edge[data-id="${edgeId}"] path:last-of-type`, { force: true });
+    await page.waitForTimeout(200);
+    const split = page.locator('button:has-text("Split copper cable to fit")');
+    check('an overloaded belt offers to split its producer', await split.isVisible());
+    await split.click();
+    await page.waitForTimeout(250);
+    const cableBlocks = await page.evaluate((id) => {
+      const store = (window as unknown as { __factoryGraph: { getState: () => unknown } })
+        .__factoryGraph;
+      const graph = (store.getState() as { graph: { nodes: { id: string; blocks?: unknown }[] } })
+        .graph;
+      return graph.nodes.find((node) => node.id === id)?.blocks ?? null;
+    }, cable);
+    check(
+      'and splitting sets the producer to fit its belts',
+      JSON.stringify(cableBlocks) === '{"type":"fit"}',
+      JSON.stringify(cableBlocks),
+    );
+    const afterSplit = await page.locator('aside[aria-label="Node inspector"]').innerText();
+    check(
+      'which brings the belt back under capacity',
+      !/Over capacity/.test(afterSplit) && /Belts\s+\d+/.test(afterSplit),
+      firstLine(afterSplit.split('Saturation')[1] ?? ''),
+    );
+    const edgeLabel = await page.locator('.react-flow__edgelabel-renderer').innerText();
+    check('the edge label counts the belts', /×\d+/.test(edgeLabel), edgeLabel.replace(/\s+/g, ' '));
+    const cableHeader = await page.locator(`.react-flow__node[data-id="${cable}"]`).innerText();
+    check(
+      'and the node reads as blocks × machines',
+      /\d+ × \d/.test(cableHeader),
+      cableHeader.replace(/\s+/g, ' '),
+    );
 
     // --- auto-layout ---------------------------------------------------------
     const beforeLayout = await snapshot(page);

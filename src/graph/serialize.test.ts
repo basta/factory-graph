@@ -33,12 +33,23 @@ const kitchenSink = doc(
       modules: ['productivity-module-3', '', 'speed-module-3', ''],
       beacons: { beaconId: 'beacon', count: 8, modules: ['speed-module-3', 'speed-module-3'] },
       constraint: { type: 'machines', count: 12.5 },
+      blocks: { type: 'count', count: 3 },
     },
     {
       id: 'r2',
       kind: 'recipe',
       recipeId: 'copper-cable',
       machineId: 'assembling-machine-2',
+      modules: [],
+      beacons: null,
+      constraint: { type: 'free' },
+      blocks: { type: 'fit' },
+    },
+    {
+      id: 'r3',
+      kind: 'recipe',
+      recipeId: 'iron-plate',
+      machineId: 'electric-furnace',
       modules: [],
       beacons: null,
       constraint: { type: 'free' },
@@ -120,7 +131,24 @@ describe('JSON round trip', () => {
     const broken = JSON.parse(serializeDocument(kitchenSink)) as {
       graph: { nodes: { constraint: { type: string; perSec?: number } }[] };
     };
-    broken.graph.nodes[2]!.constraint = { type: 'rate', perSec: -5 };
+    broken.graph.nodes[3]!.constraint = { type: 'rate', perSec: -5 };
+    expect(() => parseDocument(JSON.stringify(broken))).toThrow(GraphParseError);
+  });
+
+  it('loads a plan saved before blocks existed', () => {
+    const parsed = parseDocument(serializeDocument(kitchenSink));
+    const plain = parsed.graph.nodes.find((node) => node.id === 'r3');
+    expect(plain).toBeDefined();
+    expect(plain).not.toHaveProperty('blocks');
+  });
+
+  it('rejects a block count that is not a whole number of blocks', () => {
+    const broken = JSON.parse(serializeDocument(kitchenSink)) as {
+      graph: { nodes: { blocks?: unknown }[] };
+    };
+    broken.graph.nodes[0]!.blocks = { type: 'count', count: 2.5 };
+    expect(() => parseDocument(JSON.stringify(broken))).toThrow(GraphParseError);
+    broken.graph.nodes[0]!.blocks = { type: 'count', count: 0 };
     expect(() => parseDocument(JSON.stringify(broken))).toThrow(GraphParseError);
   });
 

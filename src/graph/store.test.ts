@@ -98,6 +98,22 @@ describe('node editing', () => {
     expect(state().graph.positions[copies[0]!]).not.toEqual(state().graph.positions[a]);
   });
 
+  it('splits a node into blocks and puts it back as one, as one undo step each', () => {
+    const id = addCircuit();
+    const node = () => state().graph.nodes.find((candidate) => candidate.id === id);
+
+    state().setBlocks(id, { type: 'fit' });
+    expect(node()).toMatchObject({ blocks: { type: 'fit' } });
+
+    state().setBlocks(id, null);
+    // Gone, not `undefined`: a node set back to one block saves as it did
+    // before blocks existed.
+    expect(Object.keys(node()!)).not.toContain('blocks');
+
+    state().undo();
+    expect(node()).toMatchObject({ blocks: { type: 'fit' } });
+  });
+
   it('ignores a rate constraint on a recipe node and vice versa', () => {
     const id = addCircuit();
     state().setConstraint(id, { type: 'rate', perSec: 5 });

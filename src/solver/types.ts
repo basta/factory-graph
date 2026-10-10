@@ -6,14 +6,25 @@ export interface NodeResult {
   craftsPerSec: number;
   /** Fractional machine count — 0.4 machines is a real answer, not an error. */
   machines: number;
+  /**
+   * What you would actually build: each block rounded up on its own, so 29
+   * machines in 5 blocks is 5 × 6 = 30, not 29.
+   */
   machinesCeil: number;
+  /** Identical copies the node is built as; 1 when it is not split. */
+  blocks: number;
   powerKw: number;
   pollutionPerMin: number;
 }
 
 export interface EdgeResult {
   perSec: number;
-  /** Null when the edge has no transport set. */
+  /**
+   * Belts or pipes carrying the flow side by side: one per block on whichever
+   * end has more blocks. Always 1 for inserters and for no transport.
+   */
+  parallel: number;
+  /** Null when the edge has no transport set. Covers every parallel belt. */
   capacityPerSec: number | null;
   /** `perSec / capacityPerSec`; null when there is no transport. */
   saturation: number | null;
