@@ -620,3 +620,69 @@ the nodes as well.
 - **Multi-recipe blocks.** Stamping out a whole cell — cable and circuits
   together — needs grouping, collapse and layout inside a group. Single-node
   blocks cover planning one recipe at a time back from a sink.
+
+## M8 — Fewer clicks
+
+Counted first. A plan from a sink — 45/s of green circuits on assembler 2s and red
+belts, plates off a bus — took about 22 clicks and 4 drags, and 16 of the clicks
+were belts. Almost none of them were decisions; they were the same decision repeated
+per node and per connection. Everything below is aimed at that count, and it is now
+`Ctrl K`, "electronic circuit", `Shift Enter`, `45`, `Enter`, `E`, `E`, plus one
+click on the plan bar for red belts.
+
+### Plan settings
+
+The choices made once per base: belt, assembler tier, furnace tier, unit, bus items.
+They live on the graph, so they travel in share links and undo with everything else,
+and a new plan starts from whatever the last change left.
+
+- **Changing one moves what followed it.** Connections on the old belt go to the new
+  one and machines on the old tier go to the new tier, in one undo step. Anything set
+  by hand to something else is left alone, which is what makes "this plan is on red
+  belts now" one click instead of one per connection — and what keeps the one blue
+  belt you set on purpose.
+- **The plan's machine comes before the data set's ranking.** The ranking put the
+  electromagnetic plant first for circuits and cable, which no early base has. A recipe
+  none of the plan's machines can make still falls back to the ranking.
+- **Older plans read as yellow belts, assembler 2s and steel furnaces** — an early-mid
+  game base, where most planning happens.
+- **Rates are still stored per second.** `/min` only changes what is shown and what the
+  rate fields take.
+
+### Expand
+
+`E` builds a producer for every unconnected input of the selection and selects the
+new nodes, so `E` again goes one step further up. Bus items are skipped; that is
+where a chain planned off a main bus stops. A sink's own item is always built.
+
+The recipe is picked without asking when there is only one sane answer: the recipe
+named after the item, a sole standard recipe, or mining for an ore. Thirteen items
+have a real choice — petroleum gas, solid fuel, uranium, a handful of Space Age
+fluids — and Expand opens the search for those rather than guessing.
+
+### The search was suggesting recycling
+
+"Standard" leaves out recycling and barrels. Writing that rule for Expand turned up
+a bug in the search: dragging from an iron plate input listed producers in data order,
+and the data has forty-odd recycling recipes for iron plate ahead of the furnace. So
+"drag, Enter" built a firearm magazine recycler. Continuing a connection now lists
+nodes already on the canvas, then the main recipe, then other standard ones, with
+recycling and barrels last.
+
+### Smaller things
+
+- `Shift Enter` in the search adds the row's item as a sink, fixed, with its rate field
+  focused — the next thing typed is the rate.
+- `1`–`4` on selected connections set the belt tier, `0` removes it; on selected nodes
+  `1`–`3` set the tier within the machine's family.
+- Double-click a machine count or a rate to type it in place.
+- A connection's label shows its belt's sprite and selects the connection when clicked.
+  React Flow's label layer ignores the pointer by default, which is why the first try
+  did nothing; the label opts back in with `pointer-events: all` and stops the click
+  before the canvas reads it as a click on empty space.
+
+### Staging
+
+All of this went to a staging site first, at `/staging/` — see the README. It shares
+`localStorage` with the live site, so it uses its own keys and starts from a copy of
+the live plans rather than editing them.
