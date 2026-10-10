@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useGameData } from '../data/context.ts';
-import { defaultMachineFor } from '../data/loader.ts';
+import { preferredMachine, settingsOf } from '../graph/settings.ts';
+import { useGraphStore } from '../graph/store.ts';
+import { recipeOrder } from '../data/recipes.ts';
 import { Sprite } from './Sprite.tsx';
 import { rank } from './fuzzy.ts';
 import styles from './Search.module.css';
@@ -45,6 +47,7 @@ const LIMIT = 40;
 
 export function Search({ open, intent, onClose, onChoose }: Props): JSX.Element | null {
   const index = useGameData();
+  const settings = useGraphStore((state) => settingsOf(state.graph));
   const [query, setQuery] = useState('');
   const [active, setActive] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -87,10 +90,19 @@ export function Search({ open, intent, onClose, onChoose }: Props): JSX.Element 
           );
 
     const rows: Row[] = [];
-    for (const recipe of index.data.recipes) {
-      if (recipeIds && !recipeIds.has(recipe.id)) continue;
-      if (recipe.producers.length === 0) continue;
-      const machineId = defaultMachineFor(index, recipe);
+    let recipes = index.data.recipes.filter(
+      (recipe) => (!recipeIds || recipeIds.has(recipe.id)) && recipe.producers.length > 0,
+    );
+    // Continuing a connection: the standard recipe first, recycling and
+    // barrels last, so Enter on an empty query picks what you meant. Sort is
+    // stable, so the data set's order still breaks ties.
+    if (intent.kind === 'consumes' || intent.kind === 'produces') {
+      const order = recipeOrder(index, intent.itemId);
+      recipes = [...recipes].sort((a, b) => order(a) - order(b));
+    }
+    for (const recipe of recipes) {
+      // The machine the node will actually get, which is the plan's pick.
+      const machineId = preferredMachine(index, recipe, settings);
       rows.push({
         choice: { kind: 'recipe', recipeId: recipe.id },
         name: recipe.name,
@@ -137,7 +149,7 @@ export function Search({ open, intent, onClose, onChoose }: Props): JSX.Element 
       });
     }
     return rows;
-  }, [open, intent, index]);
+  }, [open, intent, index, settings]);
 
   const results = useMemo(
     () => rank(candidates, query, (row) => ({ name: row.name, id: row.id }), LIMIT),

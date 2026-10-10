@@ -26,6 +26,7 @@ import {
 import { clearLocationHash, documentFromLocation, shareUrl } from './graph/url.ts';
 import { exportDocument, importDocument } from './graph/file.ts';
 import { autoLayout } from './graph/layout.ts';
+import { planExpand } from './graph/expand.ts';
 import { GraphParseError, type GraphDocument } from './graph/serialize.ts';
 import { Canvas, type DropSearch } from './canvas/Canvas.tsx';
 import { nodeShape } from './canvas/geometry.ts';
@@ -306,6 +307,50 @@ function Editor({ index }: { index: GameIndex }): JSX.Element {
     openSearchAtScreen(screen, { kind: 'anything' }, null);
   }, [openSearchAtScreen]);
 
+  /**
+   * E: a producer for every unconnected input of the selection. The new nodes
+   * become the selection, so pressing E again builds the next step up. An
+   * input with a real choice of recipe opens the search for that one.
+   */
+  const onExpand = useCallback(() => {
+    const actions = store.getState();
+    const settings = settingsOf(actions.graph);
+    const plan = planExpand(actions.graph, index, settings, actions.selection);
+    if (plan.nodes.length === 0 && plan.choices.length === 0) {
+      say(
+        actions.selection.length === 0
+          ? 'Select a node to expand.'
+          : 'Nothing to expand: every input is connected or on the bus.',
+      );
+      return;
+    }
+    actions.beginBatch();
+    actions.addNodes(plan.nodes);
+    for (const edge of plan.edges) actions.addEdge(edge);
+    actions.endBatch();
+    if (plan.nodes.length > 0) actions.setSelection(plan.nodes.map((entry) => entry.node.id), []);
+
+    const choice = plan.choices[0];
+    if (choice) {
+      const node = actions.graph.nodes.find((candidate) => candidate.id === choice.nodeId);
+      const width = node ? nodeShape(node, index).width : 0;
+      setSearch({
+        open: true,
+        intent: { kind: 'produces', itemId: choice.itemId },
+        // `onChoose` centres the new node on this point; aim it at the slot
+        // Expand left for it.
+        at: { x: choice.position.x + width / 2, y: choice.position.y + 20 },
+        connectTo: { nodeId: choice.nodeId, itemId: choice.itemId, fromSide: 'in' },
+      });
+      if (plan.choices.length > 1) {
+        const rest = plan.choices
+          .slice(1)
+          .map((entry) => (index.items.get(entry.itemId)?.name ?? entry.itemId).toLowerCase());
+        say(`Also needs a recipe chosen: ${rest.join(', ')}.`);
+      }
+    }
+  }, [index, say, store]);
+
   const openBusSearch = useCallback(() => {
     const rect = document.querySelector('.react-flow')?.getBoundingClientRect();
     openSearchAtScreen(
@@ -488,6 +533,9 @@ function Editor({ index }: { index: GameIndex }): JSX.Element {
         actions.removeNodes(actions.selection);
         actions.endBatch();
         actions.setSelection([], []);
+      } else if (event.key.toLowerCase() === 'e' && !control && !event.altKey) {
+        event.preventDefault();
+        onExpand();
       } else if (event.key.toLowerCase() === 'f' && !control) {
         // Pin or unpin every selected recipe node at its solved count.
         const nodes = actions.graph.nodes.filter((node) => actions.selection.includes(node.id));
@@ -515,6 +563,7 @@ function Editor({ index }: { index: GameIndex }): JSX.Element {
   }, [
     flow,
     helpOpen,
+    onExpand,
     onExport,
     onImport,
     onLayout,
