@@ -35,6 +35,9 @@ export const SHORTCUTS: { group: string; items: Shortcut[] }[] = [
       { keys: ['Ctrl', 'A'], description: 'Select all' },
       { keys: ['Esc'], description: 'Close panel or clear selection' },
       { keys: ['F'], description: 'Toggle fixed machine count on selection' },
+      { keys: ['1'], then: 'to 4', description: 'Belt tier on selected connections' },
+      { keys: ['0'], description: 'Take the belt off selected connections' },
+      { keys: ['1'], then: 'to 3', description: 'Machine tier on selected nodes' },
     ],
   },
   {

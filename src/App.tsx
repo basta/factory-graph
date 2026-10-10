@@ -27,6 +27,7 @@ import { clearLocationHash, documentFromLocation, shareUrl } from './graph/url.t
 import { exportDocument, importDocument } from './graph/file.ts';
 import { autoLayout } from './graph/layout.ts';
 import { planExpand } from './graph/expand.ts';
+import { tierChanges } from './graph/tiers.ts';
 import { GraphParseError, type GraphDocument } from './graph/serialize.ts';
 import { Canvas, type DropSearch } from './canvas/Canvas.tsx';
 import { nodeShape } from './canvas/geometry.ts';
@@ -337,7 +338,7 @@ function Editor({ index }: { index: GameIndex }): JSX.Element {
       const width = node ? nodeShape(node, index).width : 0;
       setSearch({
         open: true,
-        intent: { kind: 'produces', itemId: choice.itemId },
+        intent: { kind: 'produces', itemId: choice.itemId, nodeId: choice.nodeId },
         // `onChoose` centres the new node on this point; aim it at the slot
         // Expand left for it.
         at: { x: choice.position.x + width / 2, y: choice.position.y + 20 },
@@ -367,8 +368,8 @@ function Editor({ index }: { index: GameIndex }): JSX.Element {
         drop.screen,
         // Dragging out of an output looks for something that consumes it.
         drop.fromSide === 'out'
-          ? { kind: 'consumes', itemId: drop.itemId }
-          : { kind: 'produces', itemId: drop.itemId },
+          ? { kind: 'consumes', itemId: drop.itemId, nodeId: drop.nodeId }
+          : { kind: 'produces', itemId: drop.itemId, nodeId: drop.nodeId },
         { nodeId: drop.nodeId, itemId: drop.itemId, fromSide: drop.fromSide },
       );
     },
@@ -383,6 +384,20 @@ function Editor({ index }: { index: GameIndex }): JSX.Element {
           const next = { ...settings, bus: [...settings.bus, choice.itemId] };
           store.getState().setSettings(next, index);
           rememberSettings(next);
+        }
+        setSearch(CLOSED);
+        return;
+      }
+      if (choice.kind === 'existing') {
+        // Join the dragged port to a node that is already there.
+        const link = search.connectTo;
+        if (link) {
+          const transport = defaultTransport(index, settings, link.itemId);
+          store.getState().addEdge(
+            link.fromSide === 'out'
+              ? { from: link.nodeId, fromPort: link.itemId, to: choice.nodeId, toPort: link.itemId, transport }
+              : { from: choice.nodeId, fromPort: link.itemId, to: link.nodeId, toPort: link.itemId, transport },
+          );
         }
         setSearch(CLOSED);
         return;
@@ -542,6 +557,23 @@ function Editor({ index }: { index: GameIndex }): JSX.Element {
         actions.removeNodes(actions.selection);
         actions.endBatch();
         actions.setSelection([], []);
+      } else if (/^[0-9]$/.test(event.key) && !control && !event.altKey) {
+        // Belt tier on selected connections, machine tier on selected nodes.
+        const changes = tierChanges(
+          actions.graph,
+          index,
+          actions.selection,
+          actions.selectedEdges,
+          Number(event.key),
+        );
+        if (changes.transports.length === 0 && changes.machines.length === 0) return;
+        event.preventDefault();
+        actions.beginBatch();
+        for (const [id, transport] of changes.transports) actions.setTransport(id, transport);
+        for (const [id, node] of changes.machines) {
+          actions.updateRecipeNode(id, { machineId: node.machineId, modules: node.modules });
+        }
+        actions.endBatch();
       } else if (event.key.toLowerCase() === 'e' && !control && !event.altKey) {
         event.preventDefault();
         onExpand();
@@ -572,6 +604,7 @@ function Editor({ index }: { index: GameIndex }): JSX.Element {
   }, [
     flow,
     helpOpen,
+    index,
     onExpand,
     onExport,
     onImport,

@@ -1,4 +1,4 @@
-import { memo } from 'react';
+import { memo, useState } from 'react';
 import { useGameData } from '../data/context.ts';
 import { useGraphStore } from '../graph/store.ts';
 import { portKey, type RecipeNode } from '../graph/types.ts';
@@ -6,6 +6,7 @@ import { useSolve } from '../solver/context.ts';
 import { Sprite } from '../ui/Sprite.tsx';
 import { perBlock, rate } from '../ui/format.ts';
 import { useFlow, type FlowFormat } from '../ui/units.ts';
+import { InlineNumber } from './InlineNumber.tsx';
 import { nodeShape, type Port } from './geometry.ts';
 import { PortHandle } from './PortHandle.tsx';
 import { useConnecting } from './connecting.ts';
@@ -34,6 +35,8 @@ export const RecipeNodeView = memo(function RecipeNodeView({
   const result = useSolve();
   const flow = useFlow();
   const connecting = useConnecting();
+  const setConstraint = useGraphStore((state) => state.setConstraint);
+  const [editing, setEditing] = useState(false);
 
   if (!node || node.kind !== 'recipe') return null;
 
@@ -63,16 +66,26 @@ export const RecipeNodeView = memo(function RecipeNodeView({
           {recipe?.name ?? node.recipeId}
         </span>
         <span className={styles.machine}>
-          <span
-            className={['mono', styles.count, pinned ? styles.pinned : ''].join(' ')}
-            title={
-              constraint.type === 'machines'
-                ? `Fixed at ${constraint.count} machines${inBlocks}`
-                : `Solved machine count${inBlocks}`
-            }
-          >
-            {machineCount}
-          </span>
+          {editing ? (
+            <InlineNumber
+              initial={machines ?? 0}
+              // Typing a count fixes it, the same as the inspector's field.
+              onCommit={(count) => setConstraint(node.id, { type: 'machines', count })}
+              onDone={() => setEditing(false)}
+            />
+          ) : (
+            <span
+              className={['mono', styles.count, pinned ? styles.pinned : ''].join(' ')}
+              title={`${
+                constraint.type === 'machines'
+                  ? `Fixed at ${constraint.count} machines${inBlocks}`
+                  : `Solved machine count${inBlocks}`
+              }. Double-click to type one.`}
+              onDoubleClick={() => setEditing(true)}
+            >
+              {machineCount}
+            </span>
+          )}
           {machine ? <Sprite icon={machine.icon} size={16} title={machine.name} /> : null}
         </span>
       </div>

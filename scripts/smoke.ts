@@ -624,6 +624,112 @@ async function main(): Promise<void> {
       state.plans.map((plan) => plan.name).join(', '),
     );
 
+    // --- planning back from a sink, by keyboard --------------------------------
+    await page.keyboard.press('Control+p');
+    await page.waitForTimeout(250);
+    await page.getByRole('menuitem', { name: 'New plan' }).click();
+    await page.waitForTimeout(400);
+
+    const graphOf = async () =>
+      page.evaluate(() => {
+        const store = (window as unknown as { __factoryGraph: { getState: () => unknown } })
+          .__factoryGraph;
+        const { graph, selection } = store.getState() as {
+          graph: {
+            nodes: { id: string; kind: string; recipeId?: string; itemId?: string; machineId?: string; constraint: unknown }[];
+            edges: { id: string; from: string; to: string; fromPort: string; transport: { kind: string; beltId?: string } | null }[];
+          };
+          selection: string[];
+        };
+        return { nodes: graph.nodes, edges: graph.edges, selection };
+      });
+
+    await page.keyboard.press('Control+k');
+    await page.waitForTimeout(150);
+    await page.keyboard.type('electronic circuit', { delay: 8 });
+    await page.waitForTimeout(150);
+    await page.keyboard.press('Shift+Enter');
+    await page.waitForTimeout(300);
+    const focused = await page.evaluate(() => document.activeElement?.getAttribute('aria-label'));
+    check('Shift Enter adds a sink with its rate field ready', focused === 'Items/s', String(focused));
+    await page.keyboard.type('45');
+    await page.keyboard.press('Enter');
+    await page.waitForTimeout(200);
+    let plan = await graphOf();
+    check(
+      'and typing sets the rate',
+      plan.nodes.length === 1 &&
+        plan.nodes[0]!.kind === 'sink' &&
+        JSON.stringify(plan.nodes[0]!.constraint) === '{"type":"rate","perSec":45}',
+      JSON.stringify(plan.nodes[0]?.constraint),
+    );
+
+    await page.keyboard.press('e');
+    await page.waitForTimeout(250);
+    await page.keyboard.press('e');
+    await page.waitForTimeout(250);
+    plan = await graphOf();
+    const built = plan.nodes.filter((node) => node.kind === 'recipe');
+    check(
+      'E twice builds the chain on the plan machine, stopping at the bus',
+      built.map((node) => node.recipeId).sort().join() === 'copper-cable,electronic-circuit' &&
+        built.every((node) => node.machineId === 'assembling-machine-2'),
+      built.map((node) => `${node.recipeId}@${node.machineId}`).join(', '),
+    );
+    check(
+      "and every connection starts on the plan's belt",
+      plan.edges.length === 2 && plan.edges.every((edge) => edge.transport?.beltId === 'transport-belt'),
+      JSON.stringify(plan.edges.map((edge) => edge.transport)),
+    );
+
+    await page.getByRole('button', { name: 'Fast transport belt' }).click();
+    await page.waitForTimeout(250);
+    plan = await graphOf();
+    check(
+      'one click in the plan bar moves every connection to red belts',
+      plan.edges.every((edge) => edge.transport?.beltId === 'fast-transport-belt'),
+      JSON.stringify(plan.edges.map((edge) => edge.transport?.beltId)),
+    );
+
+    const cableEdge = plan.edges.find((edge) => edge.fromPort === 'copper-cable')!;
+    await page.click(`.react-flow__edge[data-id="${cableEdge.id}"] path:last-of-type`, { force: true });
+    await page.waitForTimeout(150);
+    await page.keyboard.press('3');
+    await page.waitForTimeout(200);
+    plan = await graphOf();
+    check(
+      '3 puts the selected connection on blue belt',
+      plan.edges.find((edge) => edge.id === cableEdge.id)?.transport?.beltId === 'express-transport-belt',
+      JSON.stringify(plan.edges.find((edge) => edge.id === cableEdge.id)?.transport),
+    );
+
+    await page.click('.react-flow__pane', { position: { x: 900, y: 700 } });
+    await page.waitForTimeout(150);
+    const firstLabel = await page.locator('.react-flow__edgelabel-renderer > div').first().boundingBox();
+    // A corner of the label, clear of the line that runs through its middle.
+    await page.mouse.click(firstLabel!.x + 5, firstLabel!.y + firstLabel!.height - 3);
+    await page.waitForTimeout(150);
+    check(
+      'clicking a connection label selects the connection',
+      (await snapshot(page)).selectedEdges.length === 1,
+      JSON.stringify((await snapshot(page)).selectedEdges),
+    );
+
+    const sinkId = plan.nodes.find((node) => node.kind === 'sink')!.id;
+    await page.dblclick(`.react-flow__node[data-id="${sinkId}"] [title*="Double-click"]`);
+    await page.waitForTimeout(150);
+    await page.keyboard.press('Control+a');
+    await page.keyboard.type('30');
+    await page.keyboard.press('Enter');
+    await page.waitForTimeout(200);
+    plan = await graphOf();
+    check(
+      'double-clicking a rate edits it in place',
+      JSON.stringify(plan.nodes.find((node) => node.id === sinkId)?.constraint) ===
+        '{"type":"rate","perSec":30}',
+      JSON.stringify(plan.nodes.find((node) => node.id === sinkId)?.constraint),
+    );
+
     check('no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
 
     // --- reduced motion ------------------------------------------------------

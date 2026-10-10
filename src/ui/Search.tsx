@@ -14,8 +14,9 @@ import styles from './Search.module.css';
  */
 export type SearchIntent =
   | { kind: 'anything' }
-  | { kind: 'consumes'; itemId: string }
-  | { kind: 'produces'; itemId: string }
+  /** `nodeId` is where the drag started, so it is not offered back to itself. */
+  | { kind: 'consumes'; itemId: string; nodeId?: string }
+  | { kind: 'produces'; itemId: string; nodeId?: string }
   /** Picking an item for the plan's bus rather than adding a node. */
   | { kind: 'bus' };
 
@@ -24,7 +25,9 @@ export type SearchChoice =
   | { kind: 'source'; itemId: string }
   | { kind: 'sink'; itemId: string }
   | { kind: 'note' }
-  | { kind: 'bus'; itemId: string };
+  | { kind: 'bus'; itemId: string }
+  /** A node already on the canvas, to connect rather than duplicate. */
+  | { kind: 'existing'; nodeId: string };
 
 interface Props {
   open: boolean;
@@ -48,6 +51,7 @@ const LIMIT = 40;
 export function Search({ open, intent, onClose, onChoose }: Props): JSX.Element | null {
   const index = useGameData();
   const settings = useGraphStore((state) => settingsOf(state.graph));
+  const graphNodes = useGraphStore((state) => state.graph.nodes);
   const [query, setQuery] = useState('');
   const [active, setActive] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -90,6 +94,41 @@ export function Search({ open, intent, onClose, onChoose }: Props): JSX.Element 
           );
 
     const rows: Row[] = [];
+
+    // Nodes already on the canvas that fit, first: a shared intermediate
+    // should be one node feeding two consumers, not a copy per consumer.
+    if (intent.kind === 'consumes' || intent.kind === 'produces') {
+      const side = intent.kind === 'produces' ? 'outputs' : 'inputs';
+      for (const node of graphNodes) {
+        if (node.id === intent.nodeId) continue;
+        if (node.kind === 'recipe') {
+          const recipe = index.recipes.get(node.recipeId);
+          if (!recipe?.[side].some((port) => port.itemId === intent.itemId)) continue;
+          rows.push({
+            choice: { kind: 'existing', nodeId: node.id },
+            name: recipe.name,
+            id: `existing-${node.id}`,
+            detail: 'on the canvas',
+            icon: recipe.icon,
+          });
+        } else if (
+          (node.kind === 'source' && intent.kind === 'produces') ||
+          (node.kind === 'sink' && intent.kind === 'consumes')
+        ) {
+          if (node.itemId !== intent.itemId) continue;
+          const item = index.items.get(node.itemId);
+          if (!item) continue;
+          rows.push({
+            choice: { kind: 'existing', nodeId: node.id },
+            name: item.name,
+            id: `existing-${node.id}`,
+            detail: `${node.kind} on the canvas`,
+            icon: item.icon,
+          });
+        }
+      }
+    }
+
     let recipes = index.data.recipes.filter(
       (recipe) => (!recipeIds || recipeIds.has(recipe.id)) && recipe.producers.length > 0,
     );
@@ -149,7 +188,7 @@ export function Search({ open, intent, onClose, onChoose }: Props): JSX.Element 
       });
     }
     return rows;
-  }, [open, intent, index, settings]);
+  }, [open, intent, index, settings, graphNodes]);
 
   const results = useMemo(
     () => rank(candidates, query, (row) => ({ name: row.name, id: row.id }), LIMIT),
@@ -269,7 +308,7 @@ function itemOfChoice(
   choice: SearchChoice | undefined,
   index: ReturnType<typeof useGameData>,
 ): string | null {
-  if (!choice || choice.kind === 'note') return null;
+  if (!choice || choice.kind === 'note' || choice.kind === 'existing') return null;
   if (choice.kind !== 'recipe') return choice.itemId;
   const recipe = index.recipes.get(choice.recipeId);
   if (!recipe) return null;
