@@ -14,9 +14,10 @@ const PORT = 4325;
 /**
  * Deliberately without a trailing slash: that is what GitHub Pages'
  * `configure-pages` action puts in `base_path`, and it is the shape that broke
- * the first live deploy. Vite serves it either way.
+ * the first live deploy. Vite serves it either way. `CHECK_BASE_PATH` points it
+ * at another build, such as staging's `/factory-graph/staging`.
  */
-const BASE_PATH = '/factory-graph';
+const BASE_PATH = process.env.CHECK_BASE_PATH ?? '/factory-graph';
 const BASE = `${BASE_PATH}/`;
 
 interface StoreWindow {

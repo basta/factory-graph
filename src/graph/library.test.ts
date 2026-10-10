@@ -8,9 +8,11 @@ import {
   readIndex,
   readPlan,
   restorePlan,
+  seedLibrary,
   setActivePlan,
   writePlan,
 } from './library.ts';
+import { storagePrefix } from './channel.ts';
 import { serializeDocument, type GraphDocument } from './serialize.ts';
 import { emptyGraph } from './types.ts';
 import type { GraphNode } from './types.ts';
@@ -273,5 +275,34 @@ describe('choosing the plan to open', () => {
     expect(opened.doc.projectName).toBe('Old factory');
     expect(readIndex().plans).toHaveLength(1);
     expect(store.getItem('factory-graph:document')).toBeNull();
+  });
+});
+
+describe('staging', () => {
+  const live = storagePrefix('live');
+  const staging = storagePrefix('staging');
+
+  it('keeps its own keys, apart from the live site', () => {
+    expect(staging).not.toBe(live);
+    expect(staging.startsWith(live)).toBe(false);
+  });
+
+  it('starts from a copy of the live plans, and only once', () => {
+    const id = newPlanId();
+    writePlan(id, doc('Mall'));
+    expect(seedLibrary(live, staging)).toBe(1);
+    expect(store.getItem(`${staging}plan:${id}`)).toBe(store.getItem(`${live}plan:${id}`));
+    expect(store.getItem(`${staging}index`)).toBe(store.getItem(`${live}index`));
+
+    // A plan made on the live site later does not leak into staging, and
+    // staging's own changes are never overwritten by a second seed.
+    writePlan(newPlanId(), doc('Later'));
+    expect(seedLibrary(live, staging)).toBe(0);
+    expect(store.keys.filter((key) => key.startsWith(`${staging}plan:`))).toHaveLength(1);
+  });
+
+  it('does nothing when the live site has no plans', () => {
+    expect(seedLibrary(live, staging)).toBe(0);
+    expect(store.keys).toHaveLength(0);
   });
 });

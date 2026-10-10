@@ -1,15 +1,14 @@
 name: Build and deploy
 
+# Two sites from one Pages deployment: `main` is the live site at /, and the
+# `staging` branch is a preview at /staging/. Pages holds a single artifact for
+# the whole site, so every deploy builds both — otherwise shipping one would
+# wipe the other.
 on:
   push:
-    branches: [main]
+    branches: [main, staging]
   pull_request:
   workflow_dispatch:
-
-# One deploy at a time; a newer push supersedes an in-flight one.
-concurrency:
-  group: pages
-  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -38,9 +37,27 @@ jobs:
           BASE_PATH: /factory-graph
       - run: npm run check:base
 
+  # A push to staging that passes its checks asks main to redeploy. The Pages
+  # environment only accepts deploys from the default branch, and the deploy
+  # builds staging alongside main anyway.
+  stage:
+    needs: check
+    if: github.ref == 'refs/heads/staging' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    steps:
+      - run: gh workflow run deploy.yml --ref main --repo "$GITHUB_REPOSITORY"
+        env:
+          GH_TOKEN: ${{ github.token }}
+
   deploy:
     needs: check
     if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    # One deploy at a time; a newer one supersedes an in-flight one.
+    concurrency:
+      group: pages
+      cancel-in-progress: true
     runs-on: ubuntu-latest
     permissions:
       pages: write
@@ -61,6 +78,29 @@ jobs:
       - run: npm run build
         env:
           BASE_PATH: ${{ steps.pages.outputs.base_path }}
+
+      # Staging, built into /staging/ of the same artifact when the branch exists.
+      - id: staging
+        run: |
+          if git ls-remote --exit-code --heads origin staging > /dev/null; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          fi
+      - if: steps.staging.outputs.exists == 'true'
+        uses: actions/checkout@v4
+        with:
+          ref: staging
+          path: staging-src
+      - if: steps.staging.outputs.exists == 'true'
+        working-directory: staging-src
+        run: |
+          npm ci
+          npm run build
+          cp -r dist ../dist/staging
+        env:
+          BASE_PATH: ${{ steps.pages.outputs.base_path }}/staging
+          # Its own localStorage keys, so it can never rewrite a live plan.
+          VITE_CHANNEL: staging
+
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist

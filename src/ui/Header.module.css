@@ -14,6 +14,15 @@
   color: var(--ink-muted);
 }
 
+/* Says which site this is. Bordered so it reads as a label, not a name. */
+.channel {
+  flex: none;
+  padding: 0 5px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  color: var(--ink-muted);
+}
+
 .totals {
   display: flex;
   align-items: center;
