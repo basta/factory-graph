@@ -10,6 +10,7 @@ import {
   useGraphStore,
 } from './graph/store.ts';
 import { emptyGraph, type GraphNode, type Position } from './graph/types.ts';
+import { defaultTransport, lastSettings, rememberSettings, settingsOf } from './graph/settings.ts';
 import { createAutosave, flushOnHide } from './graph/persist.ts';
 import {
   createPlan,
@@ -51,7 +52,7 @@ export function App(): JSX.Element {
         // `fitView` has a graph to frame.
         const fromLink = documentFromLocation();
         const { id, doc } = openingPlan(fromLink, () => ({
-          graph: emptyGraph(loaded.data.id),
+          graph: emptyGraph(loaded.data.id, lastSettings()),
           projectName: 'Untitled factory',
         }));
         // The link has been saved as its own plan by now, so the hash has done
@@ -208,7 +209,7 @@ function Editor({ index }: { index: GameIndex }): JSX.Element {
   const onNewPlan = useCallback(() => {
     autosave.flush();
     const doc: GraphDocument = {
-      graph: emptyGraph(index.data.id),
+      graph: emptyGraph(index.data.id, lastSettings()),
       projectName: 'Untitled factory',
     };
     showPlan(createPlan(doc), doc, false);
@@ -237,7 +238,7 @@ function Editor({ index }: { index: GameIndex }): JSX.Element {
           showPlan(neighbour.id, doc, true);
         } else {
           const fresh: GraphDocument = {
-            graph: emptyGraph(index.data.id),
+            graph: emptyGraph(index.data.id, lastSettings()),
             projectName: 'Untitled factory',
           };
           showPlan(createPlan(fresh), fresh, false);
@@ -305,6 +306,15 @@ function Editor({ index }: { index: GameIndex }): JSX.Element {
     openSearchAtScreen(screen, { kind: 'anything' }, null);
   }, [openSearchAtScreen]);
 
+  const openBusSearch = useCallback(() => {
+    const rect = document.querySelector('.react-flow')?.getBoundingClientRect();
+    openSearchAtScreen(
+      { x: (rect?.left ?? 0) + 200, y: (rect?.top ?? 0) + 120 },
+      { kind: 'bus' },
+      null,
+    );
+  }, [openSearchAtScreen]);
+
   const onDropSearch = useCallback(
     (drop: DropSearch) => {
       openSearchAtScreen(
@@ -321,9 +331,19 @@ function Editor({ index }: { index: GameIndex }): JSX.Element {
 
   const onChoose = useCallback(
     (choice: SearchChoice) => {
+      const settings = settingsOf(store.getState().graph);
+      if (choice.kind === 'bus') {
+        if (!settings.bus.includes(choice.itemId)) {
+          const next = { ...settings, bus: [...settings.bus, choice.itemId] };
+          store.getState().setSettings(next, index);
+          rememberSettings(next);
+        }
+        setSearch(CLOSED);
+        return;
+      }
       const node: GraphNode | null =
         choice.kind === 'recipe'
-          ? makeRecipeNode(index, choice.recipeId)
+          ? makeRecipeNode(index, choice.recipeId, settings)
           : choice.kind === 'source'
             ? makeSourceNode(choice.itemId)
             : choice.kind === 'sink'
@@ -344,10 +364,11 @@ function Editor({ index }: { index: GameIndex }): JSX.Element {
       actions.addNode(node, at);
       const link = search.connectTo;
       if (link) {
+        const transport = defaultTransport(index, settings, link.itemId);
         actions.addEdge(
           link.fromSide === 'out'
-            ? { from: link.nodeId, fromPort: link.itemId, to: node.id, toPort: link.itemId, transport: null }
-            : { from: node.id, fromPort: link.itemId, to: link.nodeId, toPort: link.itemId, transport: null },
+            ? { from: link.nodeId, fromPort: link.itemId, to: node.id, toPort: link.itemId, transport }
+            : { from: node.id, fromPort: link.itemId, to: link.nodeId, toPort: link.itemId, transport },
         );
       }
       actions.endBatch();
@@ -537,6 +558,7 @@ function Editor({ index }: { index: GameIndex }): JSX.Element {
             empty={graph.nodes.length === 0}
             onAddAt={(screen) => openSearchAtScreen(screen, { kind: 'anything' }, null)}
             onDropSearch={onDropSearch}
+            onAddBusItem={openBusSearch}
           />
           <Inspector
             selection={selection}

@@ -9,7 +9,8 @@ import {
 import { useGameData } from '../data/context.ts';
 import { useGraphStore } from '../graph/store.ts';
 import { useSolve } from '../solver/context.ts';
-import { percent, rate } from '../ui/format.ts';
+import { percent } from '../ui/format.ts';
+import { useFlow } from '../ui/units.ts';
 import styles from './FlowEdgeView.module.css';
 
 export const ARROW_MARKER_ID = 'fg-arrow';
@@ -51,6 +52,7 @@ export const FlowEdgeView = memo(function FlowEdgeView({
   const index = useGameData();
   const edge = useGraphStore((state) => state.graph.edges.find((candidate) => candidate.id === id));
   const result = useSolve();
+  const flow = useFlow();
   // A self-loop has to clear the node it starts and ends on, so it needs the
   // node's real box rather than just the two handle positions.
   const ownNode = useInternalNode(source);
@@ -107,7 +109,7 @@ export const FlowEdgeView = memo(function FlowEdgeView({
           style={{ transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)` }}
         >
           <span className="mono">
-            {solved ? `${rate(solved.perSec)}/s` : '—'}
+            {solved ? flow.text(solved.perSec) : '—'}
             {/* One belt per block: `×6` is six belts side by side. */}
             {solved && solved.parallel > 1 ? (
               <span className={styles.parallel}> ×{solved.parallel}</span>

@@ -8,6 +8,7 @@ import {
   type NodeChange,
 } from '@xyflow/react';
 import { useGameData } from '../data/context.ts';
+import { defaultTransport, settingsOf } from '../graph/settings.ts';
 import { useGraphStore } from '../graph/store.ts';
 import type { PortSide } from '../graph/types.ts';
 import { CanvasControls } from './CanvasControls.tsx';
@@ -16,6 +17,7 @@ import { EdgeMarkers, FlowEdgeView } from './FlowEdgeView.tsx';
 import { IoNodeView } from './IoNodeView.tsx';
 import { MiniMap } from './MiniMap.tsx';
 import { NoteNodeView } from './NoteNodeView.tsx';
+import { PlanBar } from './PlanBar.tsx';
 import { RecipeNodeView } from './RecipeNodeView.tsx';
 import { nodeShape } from './geometry.ts';
 import { useConnecting } from './connecting.ts';
@@ -47,9 +49,11 @@ interface Props {
   onAddAt: (screen: { x: number; y: number }) => void;
   /** Edge dragged into blank canvas: open the palette pre-filtered. */
   onDropSearch: (drop: DropSearch) => void;
+  /** The plan bar's bus "+": open the palette to pick an item. */
+  onAddBusItem: () => void;
 }
 
-export function Canvas({ empty, onAddAt, onDropSearch }: Props): JSX.Element {
+export function Canvas({ empty, onAddAt, onDropSearch, onAddBusItem }: Props): JSX.Element {
   const index = useGameData();
   const graph = useGraphStore((state) => state.graph);
   const selection = useGraphStore((state) => state.selection);
@@ -205,7 +209,11 @@ export function Canvas({ empty, onAddAt, onDropSearch }: Props): JSX.Element {
             fromPort: connection.sourceHandle,
             to: connection.target,
             toPort: connection.targetHandle,
-            transport: null,
+            transport: defaultTransport(
+              index,
+              settingsOf(useGraphStore.getState().graph),
+              connection.sourceHandle,
+            ),
           });
         }}
         onConnectEnd={(event, connectionState) => {
@@ -248,6 +256,7 @@ export function Canvas({ empty, onAddAt, onDropSearch }: Props): JSX.Element {
           count, or add a sink with a rate.
         </p>
       ) : null}
+      <PlanBar onAddBusItem={onAddBusItem} />
       <MiniMap />
       <CanvasControls />
     </div>

@@ -135,6 +135,23 @@ describe('JSON round trip', () => {
     expect(() => parseDocument(JSON.stringify(broken))).toThrow(GraphParseError);
   });
 
+  it('keeps plan settings, and loads a plan saved before they existed', () => {
+    const withSettings: GraphDocument = {
+      ...kitchenSink,
+      graph: {
+        ...kitchenSink.graph,
+        settings: {
+          beltId: 'fast-transport-belt',
+          machines: ['assembling-machine-3', 'electric-furnace'],
+          bus: ['iron-plate'],
+          unit: 'min',
+        },
+      },
+    };
+    expect(parseDocument(serializeDocument(withSettings))).toEqual(withSettings);
+    expect(parseDocument(serializeDocument(kitchenSink)).graph).not.toHaveProperty('settings');
+  });
+
   it('loads a plan saved before blocks existed', () => {
     const parsed = parseDocument(serializeDocument(kitchenSink));
     const plain = parsed.graph.nodes.find((node) => node.id === 'r3');

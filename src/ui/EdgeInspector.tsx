@@ -6,7 +6,8 @@ import { linesNeeded } from '../solver/rates.ts';
 import { NumberField } from './NumberField.tsx';
 import { PickerRow } from './PickerRow.tsx';
 import { Sprite } from './Sprite.tsx';
-import { percent, rate } from './format.ts';
+import { percent } from './format.ts';
+import { useFlow } from './units.ts';
 import styles from './Inspector.module.css';
 
 interface Props {
@@ -23,6 +24,7 @@ type Kind = 'none' | 'belt' | 'pipe' | 'inserter';
 export function EdgeInspector({ edges }: Props): JSX.Element {
   const index = useGameData();
   const result = useSolve();
+  const flow = useFlow();
   const setTransport = useGraphStore((state) => state.setTransport);
   const setBlocks = useGraphStore((state) => state.setBlocks);
   const removeEdges = useGraphStore((state) => state.removeEdges);
@@ -101,7 +103,7 @@ export function EdgeInspector({ edges }: Props): JSX.Element {
         <div className={styles.row}>
           <span className={styles.label}>Rate</span>
           <span className={`mono ${styles.value}`}>
-            {solved ? `${rate(solved.perSec)}/s` : '—'}
+            {solved ? flow.text(solved.perSec) : '—'}
           </span>
         </div>
       </section>
@@ -219,7 +221,7 @@ export function EdgeInspector({ edges }: Props): JSX.Element {
         <section className={styles.section}>
           <div className={styles.row}>
             <span className={styles.label}>Capacity</span>
-            <span className={`mono ${styles.value}`}>{rate(solved.capacityPerSec)}/s</span>
+            <span className={`mono ${styles.value}`}>{flow.text(solved.capacityPerSec)}</span>
           </div>
           {solved.parallel > 1 ? (
             <div className={styles.row}>

@@ -13,13 +13,16 @@ import styles from './Search.module.css';
 export type SearchIntent =
   | { kind: 'anything' }
   | { kind: 'consumes'; itemId: string }
-  | { kind: 'produces'; itemId: string };
+  | { kind: 'produces'; itemId: string }
+  /** Picking an item for the plan's bus rather than adding a node. */
+  | { kind: 'bus' };
 
 export type SearchChoice =
   | { kind: 'recipe'; recipeId: string }
   | { kind: 'source'; itemId: string }
   | { kind: 'sink'; itemId: string }
-  | { kind: 'note' };
+  | { kind: 'note' }
+  | { kind: 'bus'; itemId: string };
 
 interface Props {
   open: boolean;
@@ -63,6 +66,17 @@ export function Search({ open, intent, onClose, onChoose }: Props): JSX.Element 
 
   const candidates = useMemo<Row[]>(() => {
     if (!open) return [];
+    if (intent.kind === 'bus') {
+      return index.data.items
+        .filter((item) => item.category !== 'technology')
+        .map((item) => ({
+          choice: { kind: 'bus', itemId: item.id },
+          name: item.name,
+          id: item.id,
+          detail: 'to the bus',
+          icon: item.icon,
+        }));
+    }
     const recipeIds =
       intent.kind === 'anything'
         ? null
@@ -217,13 +231,14 @@ export function Search({ open, intent, onClose, onChoose }: Props): JSX.Element 
 }
 
 function itemOf(intent: SearchIntent): string | null {
-  return intent.kind === 'anything' ? null : intent.itemId;
+  return intent.kind === 'consumes' || intent.kind === 'produces' ? intent.itemId : null;
 }
 
 function placeholderFor(intent: SearchIntent, itemName: string | undefined): string {
   const name = (itemName ?? 'this item').toLowerCase();
   if (intent.kind === 'consumes') return `Recipes that use ${name}`;
   if (intent.kind === 'produces') return `Recipes that make ${name}`;
+  if (intent.kind === 'bus') return 'Item to treat as a bus input';
   return 'Search recipes and items';
 }
 

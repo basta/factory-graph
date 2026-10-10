@@ -84,12 +84,21 @@ const edgeSchema = z.object({
   transport: transportSchema,
 });
 
+export const settingsSchema = z.object({
+  beltId: z.string().nullable(),
+  machines: z.array(z.string()),
+  bus: z.array(z.string()),
+  unit: z.union([z.literal('s'), z.literal('min')]),
+});
+
 export const graphSchema = z.object({
   version: z.literal(1),
   dataSet: z.string(),
   nodes: z.array(nodeSchema),
   edges: z.array(edgeSchema),
   positions: z.record(z.string(), z.object({ x: z.number().finite(), y: z.number().finite() })),
+  // Optional so plans and links from before settings existed still load.
+  settings: settingsSchema.optional(),
 });
 
 /** A saved project: the graph plus the one non-graph thing worth keeping. */

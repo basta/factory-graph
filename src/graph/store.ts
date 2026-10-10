@@ -1,9 +1,9 @@
 import { create } from 'zustand';
 import type { GameIndex } from '../data/loader.ts';
-import { defaultMachineFor } from '../data/loader.ts';
 import * as history from './history.ts';
 import type { PlanMeta } from './library.ts';
 import type { GraphDocument } from './serialize.ts';
+import { applySettings, DEFAULT_SETTINGS, preferredMachine, settingsOf } from './settings.ts';
 import { emptyGraph } from './types.ts';
 import type {
   BeaconConfig,
@@ -13,6 +13,7 @@ import type {
   Graph,
   GraphNode,
   NodeId,
+  PlanSettings,
   Position,
   RateConstraint,
   RecipeNode,
@@ -80,6 +81,11 @@ interface Actions {
   /** Drops a deleted plan's parked undo stack. */
   forgetPlan(id: string): void;
   setProjectName(name: string): void;
+  /**
+   * Changes the plan's settings and moves everything that followed the old
+   * ones along with them — one undo step for the lot.
+   */
+  setSettings(next: PlanSettings, index: GameIndex): void;
 
   addNode(node: GraphNode, position: Position): void;
   addNodes(nodes: { node: GraphNode; position: Position }[]): void;
@@ -182,6 +188,10 @@ export const useGraphStore = create<GraphStore>()((set, get) => {
         projectName: name,
         history: history.push(state.history, snapshot(state)),
       }));
+    },
+
+    setSettings(next, index) {
+      commit((graph) => applySettings(graph, settingsOf(graph), next, index));
     },
 
     addNode(node, position) {
@@ -403,10 +413,14 @@ export const useGraphStore = create<GraphStore>()((set, get) => {
 
 // --- node constructors -------------------------------------------------------
 
-export function makeRecipeNode(index: GameIndex, recipeId: string): RecipeNode | null {
+export function makeRecipeNode(
+  index: GameIndex,
+  recipeId: string,
+  settings: PlanSettings = DEFAULT_SETTINGS,
+): RecipeNode | null {
   const recipe = index.recipes.get(recipeId);
   if (!recipe) return null;
-  const machineId = defaultMachineFor(index, recipe);
+  const machineId = preferredMachine(index, recipe, settings);
   if (machineId === null) return null;
   const machine = index.machines.get(machineId);
   return {

@@ -4,7 +4,7 @@ import { useGraphStore } from '../graph/store.ts';
 import { portKey } from '../graph/types.ts';
 import { useSolve } from '../solver/context.ts';
 import { Sprite } from '../ui/Sprite.tsx';
-import { rate } from '../ui/format.ts';
+import { useFlow } from '../ui/units.ts';
 import { nodeShape } from './geometry.ts';
 import { PortHandle } from './PortHandle.tsx';
 import { useConnecting } from './connecting.ts';
@@ -27,6 +27,7 @@ export const IoNodeView = memo(function IoNodeView({ data, selected }: Props): J
     state.graph.nodes.find((candidate) => candidate.id === data.nodeId),
   );
   const result = useSolve();
+  const flow = useFlow();
   const connectingNodeId = useConnecting((state) => state.nodeId);
   const connectingItemId = useConnecting((state) => state.itemId);
   const connectingSide = useConnecting((state) => state.side);
@@ -67,10 +68,10 @@ export const IoNodeView = memo(function IoNodeView({ data, selected }: Props): J
         <span
           className={['mono', styles.rate, pinned ? styles.pinned : ''].join(' ')}
           title={
-            constraint.type === 'rate' ? `Fixed at ${rate(constraint.perSec)}/s` : 'Solved rate'
+            constraint.type === 'rate' ? `Fixed at ${flow.text(constraint.perSec)}` : 'Solved rate'
           }
         >
-          {value === null ? '—' : `${rate(value)}/s`}
+          {value === null ? '—' : flow.text(value)}
         </span>
       </div>
       {port ? (
