@@ -139,6 +139,10 @@ When one port feeds several others — or several feed one — the connections a
 as a manifold: one spine 36px from the shared port, a 3px junction dot where the
 branches leave it, and each branch's label on the run that belongs only to it, beside
 its own consumer (or producer). Smoothstep would stack every label on one shared line.
+Routes are decided for all connections together: two spines never share a line (a
+second manifold in the same gap takes the next lane, 14px further out), no two flows
+share a stretch of line, and a label that would land on another slides along its run
+or, failing that, sits just above or below its line rather than across it.
 
 The label leads with a 16px sprite of the belt, pipe or inserter, so the tier reads
 without selecting anything, and the label itself is clickable: it selects the

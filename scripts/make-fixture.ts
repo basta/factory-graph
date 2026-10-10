@@ -181,6 +181,31 @@ const FIXTURES: Record<string, { projectName: string; graph: Graph }> = {
     ),
   },
 
+  /**
+   * Two producers in one column, each feeding the same two consumers: the
+   * case where two manifolds' spines land on one line and the labels on a
+   * consumer's adjacent input rows stack.
+   */
+  'two-fanouts': {
+    projectName: 'Foundry circuits',
+    graph: build(
+      [
+        recipe('iron', 'casting-iron', 'foundry', { x: 0, y: 0 }, { machines: 4 }),
+        recipe('cable', 'casting-copper-cable', 'foundry', { x: 0, y: 240 }),
+        recipe('top', 'electronic-circuit', 'assembling-machine-2', { x: 490, y: 8 }, { machines: 5 }),
+        recipe('bottom', 'electronic-circuit', 'assembling-machine-2', { x: 480, y: 268 }, {
+          machines: 5,
+        }),
+      ],
+      [
+        link('iron', 'top', 'iron-plate', { kind: 'belt', beltId: 'transport-belt', lanes: 2 }),
+        link('iron', 'bottom', 'iron-plate', { kind: 'belt', beltId: 'transport-belt', lanes: 2 }),
+        link('cable', 'top', 'copper-cable', { kind: 'belt', beltId: 'transport-belt', lanes: 2 }),
+        link('cable', 'bottom', 'copper-cable', { kind: 'belt', beltId: 'transport-belt', lanes: 2 }),
+      ],
+    ),
+  },
+
   /** Kovarex: a node feeding its own input port, plus the U-238 loop. */
   kovarex: {
     projectName: 'Kovarex loop',

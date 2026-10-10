@@ -40,12 +40,13 @@ describe('scoreLayout', () => {
     expect(score).toEqual({ edges: 1, bent: 0, throughNodes: 0, labelClashes: 0, sharedRuns: 0 });
   });
 
-  it('counts a connection running behind a node, and a label landing on one', () => {
+  it('counts a connection running behind a node, and a label with nowhere to go but onto one', () => {
     const score = scoreLayout(graph, index, {
       plate: { x: 0, y: 0 },
-      gear: { x: 900, y: 0 },
-      // Spans the plate row's height, so the line runs straight through it.
-      'in-the-way': { x: 400, y: 20 },
+      gear: { x: 600, y: 0 },
+      // Covers the whole run between the two, at the plate row's height, so
+      // the line goes straight through it and the label cannot slide clear.
+      'in-the-way': { x: 300, y: 20 },
     });
     expect(score.throughNodes).toBe(1);
     expect(score.labelClashes).toBe(1);

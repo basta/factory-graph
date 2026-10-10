@@ -1,3 +1,5 @@
+import type { EdgePlan } from './routingPlan.ts';
+
 /**
  * Edge routes for one port feeding several others, or several feeding one.
  *
@@ -7,13 +9,12 @@
  * different distances get several near-parallel lines instead of one. A
  * manifold fixes both: one spine close to the shared port, a junction where
  * the branches leave it, and each branch's label on the run that is only
- * that branch's.
+ * that branch's. `routingPlan.ts` decides where, for all connections at once;
+ * this draws one.
  */
 
-/** How far the spine sits from the shared port. */
+/** How far a spine sits from the shared port, in its first lane. */
 export const SPINE_REACH = 36;
-/** A branch needs this much horizontal run past the spine to carry a label. */
-const MIN_RUN = 48;
 const RADIUS = 6;
 
 export interface Route {
@@ -54,24 +55,34 @@ export function elbowPath(
 }
 
 /**
- * A branch of a manifold. `shared` says which end is the shared port: `out`
- * for one producer feeding several consumers, `in` for several producers
- * feeding one port. Null when the target is too close or behind the source,
- * where the ordinary route does better.
+ * A connection's route from its plan: the spine where the plan put it, and the
+ * label where the plan found room. React Flow's handle positions go in, so the
+ * route meets the ports exactly wherever the plan's own estimate was off.
  */
-export function manifoldRoute(
-  shared: 'out' | 'in',
+export function routeFromPlan(
+  plan: EdgePlan,
   sourceX: number,
   sourceY: number,
   targetX: number,
   targetY: number,
-): Route | null {
-  if (targetX - sourceX < SPINE_REACH + MIN_RUN) return null;
-  const spineX = shared === 'out' ? sourceX + SPINE_REACH : targetX - SPINE_REACH;
+): Route {
+  const spineX = plan.kind === 'in' ? targetX - plan.reach : sourceX + plan.reach;
   const path = elbowPath(sourceX, sourceY, spineX, targetX, targetY);
-  return shared === 'out'
-    ? // The label sits on the run into this branch's own consumer.
-      { path, labelX: (spineX + targetX) / 2, labelY: targetY, junction: { x: spineX, y: sourceY } }
-    : // And here on the run out of this branch's own producer.
-      { path, labelX: (sourceX + spineX) / 2, labelY: sourceY, junction: { x: spineX, y: targetY } };
+  const straight = plan.kind === 'single' && Math.abs(sourceY - targetY) < 0.5;
+  const [a, b, y] = straight
+    ? [sourceX, targetX, targetY]
+    : plan.kind === 'in'
+      ? [sourceX, spineX, sourceY]
+      : [spineX, targetX, targetY];
+  return {
+    path,
+    labelX: a + plan.labelT * (b - a),
+    labelY: y + plan.labelDy,
+    junction:
+      plan.kind === 'out'
+        ? { x: spineX, y: sourceY }
+        : plan.kind === 'in'
+          ? { x: spineX, y: targetY }
+          : null,
+  };
 }

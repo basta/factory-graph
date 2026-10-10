@@ -1,6 +1,7 @@
 import type { GameIndex } from '../data/loader.ts';
 import { nodeShape, portOffsetY, type NodeShape } from '../canvas/geometry.ts';
-import { manifoldRoute } from '../canvas/routing.ts';
+import { routeFromPlan } from '../canvas/routing.ts';
+import { computeRoutePlan, LABEL_SIZE } from '../canvas/routingPlan.ts';
 import type { Graph, Position } from './types.ts';
 
 /**
@@ -30,8 +31,7 @@ interface Rect {
   height: number;
 }
 
-/** About the size of a rate label with its belt sprite. */
-const LABEL = { width: 92, height: 26 };
+const LABEL = LABEL_SIZE;
 
 const hits = (a: Rect, b: Rect): boolean =>
   a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
@@ -48,6 +48,7 @@ function segmentHits(ax: number, ay: number, bx: number, by: number, rect: Rect)
   return hits(box, inset);
 }
 
+/** Where React Flow puts a port's handle: 6px outside the node border. */
 function portPoint(
   at: Position,
   shape: NodeShape,
@@ -57,7 +58,7 @@ function portPoint(
   const ports = side === 'in' ? shape.inputs : shape.outputs;
   const port = ports.find((candidate) => candidate.itemId === itemId);
   if (!port) return null;
-  return { x: at.x + (side === 'in' ? 0 : shape.width), y: at.y + portOffsetY(shape, port.row) };
+  return { x: at.x + (side === 'in' ? -6 : shape.width + 6), y: at.y + portOffsetY(shape, port.row) };
 }
 
 export function scoreLayout(
@@ -74,6 +75,8 @@ export function scoreLayout(
   }
 
   const score: LayoutScore = { edges: 0, bent: 0, throughNodes: 0, labelClashes: 0, sharedRuns: 0 };
+  // The same plan the canvas draws from, so the score is of what is on screen.
+  const plans = computeRoutePlan({ ...graph, positions }, index);
   const labels: Rect[] = [];
   const traced: { from: string; to: string; points: Position[] }[] = [];
 
@@ -87,18 +90,16 @@ export function scoreLayout(
     if (!source || !target) continue;
     score.edges += 1;
 
-    const fanOut = graph.edges.filter((o) => o.from === edge.from && o.fromPort === edge.fromPort).length;
-    const fanIn = graph.edges.filter((o) => o.to === edge.to && o.toPort === edge.toPort).length;
-    const shared = fanOut > 1 ? 'out' : fanIn > 1 ? 'in' : null;
-    const manifold = shared ? manifoldRoute(shared, source.x, source.y, target.x, target.y) : null;
-
+    const plan = plans.get(edge.id);
     let points: Position[];
     let label: Position;
-    if (manifold) {
-      const spineX = manifold.junction!.x;
+    if (plan) {
+      const route = routeFromPlan(plan, source.x, source.y, target.x, target.y);
+      const spineX = plan.kind === 'in' ? target.x - plan.reach : source.x + plan.reach;
       points = [source, { x: spineX, y: source.y }, { x: spineX, y: target.y }, target];
-      label = { x: manifold.labelX, y: manifold.labelY };
+      label = { x: route.labelX, y: route.labelY };
     } else if (target.x > source.x) {
+      // Too close for an elbow: smoothstep, turning halfway.
       const middle = (source.x + target.x) / 2;
       points = [source, { x: middle, y: source.y }, { x: middle, y: target.y }, target];
       label = { x: middle, y: (source.y + target.y) / 2 };

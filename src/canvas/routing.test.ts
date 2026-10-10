@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { elbowPath, manifoldRoute, SPINE_REACH } from './routing.ts';
+import { elbowPath, routeFromPlan } from './routing.ts';
 
 describe('elbowPath', () => {
   it('is a straight line when the ports line up', () => {
@@ -14,26 +14,24 @@ describe('elbowPath', () => {
   });
 });
 
-describe('manifoldRoute', () => {
-  it('puts a fan-out spine by the producer and each label on its own branch', () => {
-    const up = manifoldRoute('out', 0, 300, 500, 100)!;
-    const down = manifoldRoute('out', 0, 300, 500, 500)!;
-    // One spine for both branches, so they share it rather than run side by side.
-    expect(up.junction).toEqual({ x: SPINE_REACH, y: 300 });
-    expect(down.junction).toEqual(up.junction);
-    // Labels at their consumers' heights, so they cannot stack.
-    expect(up.labelY).toBe(100);
-    expect(down.labelY).toBe(500);
+describe('routeFromPlan', () => {
+  it('hangs a fan-out spine off the source, with the label on the branch into its consumer', () => {
+    const route = routeFromPlan({ kind: 'out', reach: 50, labelT: 0.5, labelDy: 0 }, 0, 300, 500, 100);
+    expect(route.junction).toEqual({ x: 50, y: 300 });
+    expect(route.labelX).toBe(275);
+    expect(route.labelY).toBe(100);
   });
 
-  it('mirrors for a fan-in, with labels at the producers', () => {
-    const route = manifoldRoute('in', 0, 120, 500, 300)!;
-    expect(route.junction).toEqual({ x: 500 - SPINE_REACH, y: 300 });
+  it('hangs a fan-in spine off the target, with the label by its producer', () => {
+    const route = routeFromPlan({ kind: 'in', reach: 36, labelT: 0.5, labelDy: 0 }, 0, 120, 500, 300);
+    expect(route.junction).toEqual({ x: 464, y: 300 });
     expect(route.labelY).toBe(120);
   });
 
-  it('gives way to the ordinary route when there is no room', () => {
-    expect(manifoldRoute('out', 0, 0, 60, 200)).toBeNull();
-    expect(manifoldRoute('out', 500, 0, 0, 200)).toBeNull();
+  it('moves a label off its line when the plan says so', () => {
+    const route = routeFromPlan({ kind: 'single', reach: 100, labelT: 0.5, labelDy: 14 }, 0, 50, 300, 50);
+    expect(route.junction).toBeNull();
+    expect(route.labelX).toBe(150);
+    expect(route.labelY).toBe(64);
   });
 });

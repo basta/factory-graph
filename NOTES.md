@@ -769,3 +769,32 @@ longer matches its node (the solver already ignores those) sits the layout out.
 
 `channel.ts` also stopped assuming Vite: under plain Node, as in a script, there is no
 `import.meta.env` at all, and that now reads as the live channel instead of throwing.
+
+## M11 — Routing all connections together
+
+A screenshot from use: casting iron and casting copper cable, stacked in one column,
+each feeding the same two circuit blocks. Both manifold spines sat 36px out from ports
+at the same x — one line, two fan-outs, no telling them apart — and on each circuit the
+iron and copper labels, one 18px row apart and 25px tall, sat on top of each other.
+The `two-fanouts` fixture is that plan.
+
+Both problems were the same one: every connection picked its route alone. A routing
+pass (`routingPlan.ts`) now decides them together, once per graph change, and each
+connection draws from its entry:
+
+- **Spine lanes.** Fan-outs and fan-ins are placed first, then single elbows, top to
+  bottom. Each takes the first candidate position — 36px out, then 14px further per
+  lane; for an elbow, halfway, then 14px either side — where its vertical run does not
+  sit on another's and none of its horizontal runs shares a stretch with a different
+  flow. That also cleared the one shared stretch in `tangle` that M10 left.
+- **Labels.** Each label tries the middle of its own run, then points along it, then
+  the same just above or below the line, and takes the first that overlaps no label
+  and no node. Leaving the line costs a little, so it only happens when it buys room.
+
+The plan is relative — how far out a spine sits, how far along its run a label goes —
+so it is applied to React Flow's own handle positions and the lines always meet the
+ports. It is memoised on the graph object, and an entry that did not change keeps its
+identity, so moving one node does not re-render every connection. `scoreLayout` traces
+from the same plan, so the score is of what is on screen; across the fixtures and the
+science tree, shared stretches went to zero, and label clashes from 24 to 2 on the
+science tree (two runs too short for a label anywhere).
