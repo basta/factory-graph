@@ -106,7 +106,13 @@ export const FlowEdgeView = memo(function FlowEdgeView({
           className={[styles.label, over ? styles.labelWarn : ''].filter(Boolean).join(' ')}
           style={{ transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)` }}
         >
-          <span className="mono">{solved ? `${rate(solved.perSec)}/s` : '—'}</span>
+          <span className="mono">
+            {solved ? `${rate(solved.perSec)}/s` : '—'}
+            {/* One belt per block: `×6` is six belts side by side. */}
+            {solved && solved.parallel > 1 ? (
+              <span className={styles.parallel}> ×{solved.parallel}</span>
+            ) : null}
+          </span>
           {saturation !== null ? (
             <span
               className={styles.bar}

@@ -27,7 +27,8 @@ between saved plans, and the reduced-motion path. Both run in CI.
 
 To poke at a specific graph, `npx tsx scripts/make-fixture.ts <name>` prints a
 share hash you can paste after the `#` — `green-circuits`, `unbalanced`,
-`saturated-belt`, `kovarex`, `tangle`, `beacons`, `no-constraint`.
+`saturated-belt`, `over-belt`, `blocks`, `kovarex`, `tangle`, `beacons`,
+`no-constraint`.
 
 ## Refreshing the game data
 

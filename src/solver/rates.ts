@@ -30,7 +30,7 @@
 import type { Beacon, Machine, Module, Recipe } from '../data/schema.ts';
 import type { EffectName } from '../data/schema.ts';
 import type { GameIndex } from '../data/loader.ts';
-import type { BeaconConfig } from '../graph/types.ts';
+import type { BeaconConfig, Transport } from '../graph/types.ts';
 
 /** Lowest multiplier any effect can push a machine to. */
 export const MIN_EFFECT_MULTIPLIER = 0.2;
@@ -203,4 +203,31 @@ export function outputPerCraft(
 /** Items consumed per craft. Productivity never touches inputs. */
 export function inputPerCraft(port: { amount: number; probability: number }): number {
   return port.amount * port.probability;
+}
+
+/**
+ * What one belt or pipe of this transport carries — the unit a block gets its
+ * own copy of. Null for inserters, whose count is already the total the user
+ * typed, and for no transport.
+ */
+export function lineCapacity(transport: Transport, index: GameIndex): number | null {
+  if (transport?.kind === 'belt') {
+    const belt = index.belts.get(transport.beltId);
+    // A belt's rated speed covers both lanes; one lane carries half.
+    return belt ? (belt.itemsPerSec * transport.lanes) / 2 : null;
+  }
+  if (transport?.kind === 'pipe') {
+    return index.pipes.get(transport.pipeId)?.fluidPerSec ?? PIPE_THROUGHPUT_PER_SEC;
+  }
+  return null;
+}
+
+/**
+ * How many belts or pipes of `capacity` it takes to carry `perSec`. Never
+ * fewer than one. The tolerance keeps 90/s on 15/s belts at 6 when the
+ * simplex hands back 90.0000001.
+ */
+export function linesNeeded(perSec: number, capacity: number): number {
+  if (!(capacity > 0) || !Number.isFinite(perSec)) return 1;
+  return Math.max(1, Math.ceil(perSec / capacity - 1e-6));
 }

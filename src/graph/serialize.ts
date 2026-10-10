@@ -37,6 +37,13 @@ const nodeSchema = z.discriminatedUnion('kind', [
       })
       .nullable(),
     constraint: constraintSchema,
+    // Optional so plans and links saved before blocks existed still load.
+    blocks: z
+      .union([
+        z.object({ type: z.literal('fit') }),
+        z.object({ type: z.literal('count'), count: z.number().int().positive() }),
+      ])
+      .optional(),
   }),
   z.object({
     id: z.string(),

@@ -219,6 +219,27 @@
   color: var(--warn);
 }
 
+/* Belt tiers as the game shows them: a sprite and a count, no words. */
+.tiers {
+  display: flex;
+  flex: 1;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.tier {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--ink);
+}
+
+/* The same line in the quiet colour, for guidance that is not a problem. */
+.hint {
+  margin: 4px 0 0;
+  color: var(--ink-muted);
+}
+
 /* A two- or three-way choice, drawn as one control rather than three buttons. */
 .segmented {
   display: flex;

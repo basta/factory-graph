@@ -7,6 +7,7 @@ import type { GraphDocument } from './serialize.ts';
 import { emptyGraph } from './types.ts';
 import type {
   BeaconConfig,
+  Blocks,
   Constraint,
   FlowEdge,
   Graph,
@@ -88,6 +89,8 @@ interface Actions {
   setConstraint(id: NodeId, constraint: Constraint | RateConstraint): void;
   setNoteText(id: NodeId, text: string): void;
   setBeacons(id: NodeId, beacons: BeaconConfig | null): void;
+  /** Null builds the node as one block and drops the field entirely. */
+  setBlocks(id: NodeId, blocks: Blocks | null): void;
 
   addEdge(edge: Omit<FlowEdge, 'id'>): string | null;
   removeEdges(ids: string[]): void;
@@ -281,6 +284,20 @@ export const useGraphStore = create<GraphStore>()((set, get) => {
       commit((graph) => ({
         ...graph,
         nodes: graph.nodes.map((n) => (n.id === id && n.kind === 'recipe' ? { ...n, beacons } : n)),
+      }));
+    },
+
+    setBlocks(id, blocks) {
+      commit((graph) => ({
+        ...graph,
+        nodes: graph.nodes.map((n) => {
+          if (n.id !== id || n.kind !== 'recipe') return n;
+          if (blocks) return { ...n, blocks };
+          // Leave no `blocks: undefined` behind, so a node set back to one
+          // block saves exactly as it did before blocks existed.
+          const { blocks: _dropped, ...rest } = n;
+          return rest;
+        }),
       }));
     },
 

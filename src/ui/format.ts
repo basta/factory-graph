@@ -12,6 +12,14 @@ export function rate(value: number): string {
   return Math.round(value).toLocaleString('en-US');
 }
 
+/**
+ * A machine count split into blocks: `6 × 4.9` is six blocks of 4.9 machines.
+ * Count first, because the block count is the number you lay out.
+ */
+export function perBlock(blocks: number, machines: number): string {
+  return `${blocks} × ${rate(blocks > 0 ? machines / blocks : machines)}`;
+}
+
 function trimZeros(text: string): string {
   return text.includes('.') ? text.replace(/0+$/, '').replace(/\.$/, '') : text;
 }

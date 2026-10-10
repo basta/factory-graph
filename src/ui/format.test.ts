@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { timeAgo } from './format.ts';
+import { perBlock, timeAgo } from './format.ts';
 
 const NOW = Date.UTC(2026, 0, 20, 12, 0, 0);
 const ago = (ms: number): string => timeAgo(NOW - ms, NOW);
@@ -41,5 +41,12 @@ describe('timeAgo', () => {
     // Another window on a machine whose clock is ahead can write a future
     // timestamp; "just now" is wrong but harmless, "-3 min ago" is broken.
     expect(timeAgo(NOW + 5 * MINUTE, NOW)).toBe('just now');
+  });
+});
+
+describe('perBlock', () => {
+  it('puts the block count first and the machines in each second', () => {
+    expect(perBlock(6, 30)).toBe('6 × 5');
+    expect(perBlock(6, 29.4)).toBe('6 × 4.9');
   });
 });

@@ -57,7 +57,8 @@ the border turning `--copper`; there is no glow, no scale, no ring.
   `--ink`), then right-aligned the **mono machine count** and the 16px machine sprite.
   Fixed-count nodes show the number with a 1px `--copper` underline; solved nodes show it
   plain. That one hairline is the entire "this is pinned" affordance — no lock icon, no
-  badge.
+  badge. A node split into blocks shows the count as `6 × 5` — blocks first, machines in
+  each second — because the block count is the number you lay out.
 - Module slots: a row of 16px squares tucked into the bottom edge of the header band,
   filled with module sprites or drawn as a 1px `--line` outline when empty. Clicking one
   opens the module picker. They only appear when the machine has slots.
@@ -127,7 +128,8 @@ arrowhead is a small filled triangle drawn as a marker, not React Flow's default
 rate label is a `--panel` box with 1px `--line` and mono text on the path midpoint; when
 a transport is set a 2px saturation bar sits directly under the label, filling
 left-to-right in `--brass`, switching the bar *and* the label *and* the path to `--warn`
-above 100 %.
+above 100 %. When blocks put several belts side by side the label adds a `--ink-muted`
+`×6` after the rate, and the bar measures one of those belts, not all of them as one.
 
 ## Type
 

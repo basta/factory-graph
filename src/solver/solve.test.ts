@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { graphOf, testGameData } from './fixtures.ts';
 import { solve, type SolveResult } from './index.ts';
 import { portKey } from '../graph/types.ts';
-import type { GraphNode } from '../graph/types.ts';
+import type { Blocks, GraphNode, Transport } from '../graph/types.ts';
 
 const index = testGameData();
 
@@ -10,7 +10,7 @@ function recipe(
   id: string,
   recipeId: string,
   machineId: string,
-  options: { modules?: string[]; machines?: number } = {},
+  options: { modules?: string[]; machines?: number; blocks?: Blocks } = {},
 ): GraphNode {
   return {
     id,
@@ -23,6 +23,7 @@ function recipe(
       options.machines === undefined
         ? { type: 'free' }
         : { type: 'machines', count: options.machines },
+    ...(options.blocks ? { blocks: options.blocks } : {}),
   };
 }
 
@@ -337,6 +338,139 @@ describe('transport capacity', () => {
     );
     const result = solve(graph, index);
     expect(result.edges.e0!.capacityPerSec).toBeCloseTo(30, 6);
+  });
+});
+
+describe('blocks', () => {
+  const yellow: Transport = { kind: 'belt', beltId: 'transport-belt', lanes: 2 };
+
+  /**
+   * Planned from the sink: 30 circuits/s from assembler 2s wants 90/s of
+   * cable — 30 cable assemblers and six yellow belts' worth.
+   */
+  function sinkFirst(
+    perSec: number,
+    cable: { blocks?: Blocks; machines?: number } = {},
+    cableTransport: Transport = yellow,
+  ) {
+    return graphOf(
+      [
+        sink('out', 'electronic-circuit', perSec),
+        recipe('circuit', 'electronic-circuit', 'assembling-machine-2'),
+        recipe('cable', 'copper-cable', 'assembling-machine-2', cable),
+      ],
+      [
+        link('circuit', 'out', 'electronic-circuit'),
+        { ...link('cable', 'circuit', 'copper-cable'), transport: cableTransport },
+      ],
+    );
+  }
+
+  it('builds a node without blocks as one, on one belt', () => {
+    const result = solve(sinkFirst(30), index);
+    expect(result.nodes.cable!.blocks).toBe(1);
+    expect(result.nodes.cable!.machinesCeil).toBe(30);
+    expect(result.edges.e1!.parallel).toBe(1);
+    expect(result.edges.e1!.saturation).toBeCloseTo(6, 6);
+  });
+
+  it('fits blocks to the belt so each one fills a belt', () => {
+    const result = solve(sinkFirst(30, { blocks: { type: 'fit' } }), index);
+    expect(result.nodes.cable!.machines).toBeCloseTo(30, 6);
+    expect(result.nodes.cable!.blocks).toBe(6);
+    expect(result.nodes.cable!.machinesCeil).toBe(30);
+    expect(result.edges.e1!.parallel).toBe(6);
+    expect(result.edges.e1!.capacityPerSec).toBeCloseTo(90, 6);
+    expect(result.edges.e1!.saturation).toBeCloseTo(1, 6);
+  });
+
+  it('follows the sink when its rate changes', () => {
+    const result = solve(sinkFirst(45, { blocks: { type: 'fit' } }), index);
+    expect(result.nodes.cable!.blocks).toBe(9);
+    expect(result.edges.e1!.saturation).toBeCloseTo(1, 6);
+  });
+
+  it('fits a single lane as half a belt', () => {
+    const oneLane: Transport = { kind: 'belt', beltId: 'transport-belt', lanes: 1 };
+    const result = solve(sinkFirst(30, { blocks: { type: 'fit' } }, oneLane), index);
+    expect(result.nodes.cable!.blocks).toBe(12);
+  });
+
+  it('keeps one block when there is no belt to fit', () => {
+    const bare = solve(sinkFirst(30, { blocks: { type: 'fit' } }, null), index);
+    expect(bare.nodes.cable!.blocks).toBe(1);
+    // An inserter count is already a total, so blocks neither fit it nor
+    // multiply it.
+    const inserter: Transport = { kind: 'inserter', inserterId: 'fast-inserter', count: 2 };
+    const inserted = solve(sinkFirst(30, { blocks: { type: 'count', count: 3 } }, inserter), index);
+    expect(inserted.edges.e1!.parallel).toBe(1);
+    expect(inserted.edges.e1!.capacityPerSec).toBeCloseTo(30, 6);
+  });
+
+  it('rounds the build count per block, not overall', () => {
+    const graph = graphOf([
+      recipe('cable', 'copper-cable', 'assembling-machine-2', {
+        machines: 29,
+        blocks: { type: 'count', count: 5 },
+      }),
+    ]);
+    const result = solve(graph, index);
+    expect(result.nodes.cable!.machines).toBeCloseTo(29, 6);
+    expect(result.nodes.cable!.blocks).toBe(5);
+    // 5.8 a block, so every block gets 6.
+    expect(result.nodes.cable!.machinesCeil).toBe(30);
+  });
+
+  it('charges idle drain for every machine the blocks build', () => {
+    const plain = solve(
+      graphOf([recipe('cable', 'copper-cable', 'assembling-machine-2', { machines: 29 })]),
+      index,
+    );
+    const split = solve(
+      graphOf([
+        recipe('cable', 'copper-cable', 'assembling-machine-2', {
+          machines: 29,
+          blocks: { type: 'count', count: 5 },
+        }),
+      ]),
+      index,
+    );
+    const drainKw = index.machines.get('assembling-machine-2')!.drainKw;
+    expect(split.nodes.cable!.powerKw - plain.nodes.cable!.powerKw).toBeCloseTo(drainKw, 6);
+  });
+
+  it('runs one belt per block on whichever end has more', () => {
+    const graph = graphOf(
+      [
+        source('plate', 'copper-plate'),
+        recipe('cable', 'copper-cable', 'assembling-machine-2', {
+          machines: 30,
+          blocks: { type: 'count', count: 6 },
+        }),
+        recipe('circuit', 'electronic-circuit', 'assembling-machine-2', {
+          blocks: { type: 'count', count: 2 },
+        }),
+      ],
+      [
+        { ...link('plate', 'cable', 'copper-plate'), transport: yellow },
+        { ...link('cable', 'circuit', 'copper-cable'), transport: yellow },
+      ],
+    );
+    const result = solve(graph, index);
+    // 45/s of plate shared by six blocks: each gets half a belt.
+    expect(result.edges.e0!.parallel).toBe(6);
+    expect(result.edges.e0!.saturation).toBeCloseTo(0.5, 6);
+    expect(result.edges.e1!.parallel).toBe(6);
+    expect(result.edges.e1!.saturation).toBeCloseTo(1, 6);
+  });
+
+  it('never changes a rate', () => {
+    const plain = solve(sinkFirst(30), index);
+    const split = solve(sinkFirst(30, { blocks: { type: 'fit' } }), index);
+    expect(split.edges.e1!.perSec).toBeCloseTo(plain.edges.e1!.perSec, 9);
+    expect(split.nodes.cable!.machines).toBeCloseTo(plain.nodes.cable!.machines, 9);
+    expect(split.totals.rawInputs).toEqual(plain.totals.rawInputs);
+    expect(split.totals.outputs).toEqual(plain.totals.outputs);
   });
 });
 

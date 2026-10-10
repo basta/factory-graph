@@ -1,9 +1,11 @@
 import { useGameData } from '../data/context.ts';
 import { useGraphStore } from '../graph/store.ts';
-import type { FlowEdge, Transport } from '../graph/types.ts';
+import type { FlowEdge, RecipeNode, Transport } from '../graph/types.ts';
 import { useSolve } from '../solver/context.ts';
+import { linesNeeded } from '../solver/rates.ts';
 import { NumberField } from './NumberField.tsx';
 import { PickerRow } from './PickerRow.tsx';
+import { Sprite } from './Sprite.tsx';
 import { percent, rate } from './format.ts';
 import styles from './Inspector.module.css';
 
@@ -22,7 +24,9 @@ export function EdgeInspector({ edges }: Props): JSX.Element {
   const index = useGameData();
   const result = useSolve();
   const setTransport = useGraphStore((state) => state.setTransport);
+  const setBlocks = useGraphStore((state) => state.setBlocks);
   const removeEdges = useGraphStore((state) => state.removeEdges);
+  const nodes = useGraphStore((state) => state.graph.nodes);
   const beginBatch = useGraphStore((state) => state.beginBatch);
   const endBatch = useGraphStore((state) => state.endBatch);
 
@@ -70,6 +74,22 @@ export function EdgeInspector({ edges }: Props): JSX.Element {
 
   const transport = first.transport;
   const over = solved?.saturation !== null && (solved?.saturation ?? 0) > 1;
+
+  // Splitting into blocks gives each block its own belt or pipe, so it can fix
+  // an overloaded one; inserter counts are totals and it cannot. The producer
+  // goes first: planning back from a sink, it is the node just added.
+  const splitTarget =
+    over && (transport?.kind === 'belt' || transport?.kind === 'pipe')
+      ? [first.from, first.to]
+          .map((id) => nodes.find((node) => node.id === id))
+          .find(
+            (node): node is RecipeNode =>
+              node?.kind === 'recipe' && node.blocks?.type !== 'fit',
+          )
+      : undefined;
+  const splitName = splitTarget
+    ? (index.recipes.get(splitTarget.recipeId)?.name ?? splitTarget.recipeId).toLowerCase()
+    : '';
 
   return (
     <>
@@ -201,13 +221,52 @@ export function EdgeInspector({ edges }: Props): JSX.Element {
             <span className={styles.label}>Capacity</span>
             <span className={`mono ${styles.value}`}>{rate(solved.capacityPerSec)}/s</span>
           </div>
+          {solved.parallel > 1 ? (
+            <div className={styles.row}>
+              <span className={styles.label}>{transport?.kind === 'pipe' ? 'Pipes' : 'Belts'}</span>
+              <span className={`mono ${styles.value}`}>{solved.parallel}</span>
+            </div>
+          ) : null}
           <div className={styles.row}>
             <span className={styles.label}>Saturation</span>
             <span className={`mono ${styles.value} ${over ? styles.valueWarn : ''}`}>
               {percent(solved.saturation ?? 0)}
             </span>
           </div>
-          {over ? (
+          {transport?.kind === 'belt' ? (
+            // The sum you would otherwise do in your head: this flow, on each
+            // tier of belt, at the lanes chosen above.
+            <div className={styles.row}>
+              <span className={styles.label}>Belts needed</span>
+              <span className={styles.tiers}>
+                {index.data.belts.map((belt) => (
+                  <span key={belt.id} className={styles.tier} title={belt.name}>
+                    <Sprite icon={belt.icon} size={16} />
+                    <span className="mono">
+                      {linesNeeded(solved.perSec, (belt.itemsPerSec * transport.lanes) / 2)}
+                    </span>
+                  </span>
+                ))}
+              </span>
+            </div>
+          ) : null}
+          {over && splitTarget ? (
+            <>
+              <p className={styles.note}>
+                Over capacity. Split the {splitName} machines into blocks, each on its own{' '}
+                {transport?.kind === 'pipe' ? 'pipe' : 'belt'}.
+              </p>
+              <div className={styles.row}>
+                <button
+                  type="button"
+                  className={styles.toggle}
+                  onClick={() => setBlocks(splitTarget.id, { type: 'fit' })}
+                >
+                  Split {splitName} to fit
+                </button>
+              </div>
+            </>
+          ) : over ? (
             <p className={styles.note}>
               Over capacity. Use a faster belt, split the flow, or add a lane.
             </p>

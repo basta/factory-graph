@@ -7,7 +7,7 @@
  * Positions are hand-placed so a screenshot of a given fixture is stable.
  */
 import { encodeToHash } from '../src/graph/serialize.ts';
-import type { FlowEdge, Graph, GraphNode, Transport } from '../src/graph/types.ts';
+import type { Blocks, FlowEdge, Graph, GraphNode, Transport } from '../src/graph/types.ts';
 
 type NodeSpec = { node: GraphNode; at: { x: number; y: number } };
 
@@ -16,7 +16,7 @@ function recipe(
   recipeId: string,
   machineId: string,
   at: { x: number; y: number },
-  options: { modules?: string[]; machines?: number } = {},
+  options: { modules?: string[]; machines?: number; blocks?: Blocks } = {},
 ): NodeSpec {
   return {
     node: {
@@ -30,6 +30,7 @@ function recipe(
         options.machines === undefined
           ? { type: 'free' }
           : { type: 'machines', count: options.machines },
+      ...(options.blocks ? { blocks: options.blocks } : {}),
     },
     at,
   };
@@ -151,6 +152,13 @@ const FIXTURES: Record<string, { projectName: string; graph: Graph }> = {
     ),
   },
 
+  /**
+   * Planned back from a sink, with the cable too much for one yellow belt.
+   * `blocks` is the same chain with the cable split to fit.
+   */
+  'over-belt': overBelt(),
+  blocks: overBelt({ type: 'fit' }),
+
   /** Kovarex: a node feeding its own input port, plus the U-238 loop. */
   kovarex: {
     projectName: 'Kovarex loop',
@@ -225,6 +233,30 @@ const FIXTURES: Record<string, { projectName: string; graph: Graph }> = {
     ),
   },
 };
+
+function overBelt(cableBlocks?: Blocks): { projectName: string; graph: Graph } {
+  const yellow: Transport = { kind: 'belt', beltId: 'transport-belt', lanes: 2 };
+  return {
+    projectName: 'Green circuits',
+    graph: build(
+      [
+        source('copper', 'copper-plate', { x: -380, y: 230 }),
+        source('iron', 'iron-plate', { x: 20, y: 40 }),
+        recipe('cable', 'copper-cable', 'assembling-machine-2', { x: 20, y: 210 }, {
+          blocks: cableBlocks,
+        }),
+        recipe('circuit', 'electronic-circuit', 'assembling-machine-2', { x: 440, y: 110 }),
+        sink('out', 'electronic-circuit', { x: 860, y: 130 }, 30),
+      ],
+      [
+        link('copper', 'cable', 'copper-plate', yellow),
+        link('iron', 'circuit', 'iron-plate'),
+        link('cable', 'circuit', 'copper-cable', yellow),
+        link('circuit', 'out', 'electronic-circuit'),
+      ],
+    ),
+  };
+}
 
 const name = process.argv[2] ?? 'green-circuits';
 const fixture = FIXTURES[name];

@@ -11,6 +11,14 @@ export interface BeaconConfig {
   modules: string[];
 }
 
+/**
+ * A recipe node built as several identical copies, each with its own belt or
+ * pipe for every item. `fit` sizes the count from the belts on the node's
+ * connections, so it follows the rate when the sink changes; `count` is a
+ * number the user chose.
+ */
+export type Blocks = { type: 'fit' } | { type: 'count'; count: number };
+
 export interface RecipeNode {
   id: NodeId;
   kind: 'recipe';
@@ -20,6 +28,8 @@ export interface RecipeNode {
   modules: string[];
   beacons: BeaconConfig | null;
   constraint: Constraint;
+  /** Absent means one block — the node is built as a single unit. */
+  blocks?: Blocks;
 }
 
 export interface SourceNode {
