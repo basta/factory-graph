@@ -725,3 +725,47 @@ A branch whose target is too close or behind its source keeps the ordinary route
 
 `shots/m10-fanout-before.png` and `m10-fanout-after.png` are the `fan-out` fixture;
 `m10-fanout-mixed.png` staggers the consumers and adds a fan-in.
+
+## M10 — Auto-layout for the routing
+
+With manifolds in, `Ctrl L` was the weak link. ELK was laying out node *centres* while
+connections attach at port rows, so after a layout nearly every connection had a small
+jog in it; and the 120px between columns left a manifold branch no room for its label.
+
+Judged by numbers this time, not screenshots. `scoreLayout` traces each connection the
+way the canvas draws it and counts bent connections, connections running behind a node
+they do not touch, labels landing on a label or a node, and pairs of connections drawn
+along the same stretch of line. Run over the fixtures and a red-and-green-science tree
+built with Expand down to ore (26 nodes):
+
+```
+                 bent       through   label clashes
+                 old  new   old new   old new
+science  (24)    23   7     0   0     0   0
+tangle   (10)    8    4     2   0     4   0
+fan-out   (4)    4    3     0   0     4   0
+kovarex   (3)    3    1     0   0     3   0
+```
+
+- **Ports.** Each node now hands ELK its ports at their real row offsets
+  (`portConstraints: FIXED_POS`), so it lines ports up rather than centres. This alone
+  took the science tree from 23 bent connections to 6.
+- **180px between columns**, for a 36px spine plus a branch long enough to carry its
+  label clear of the next node. At 120 the fan-out labels sat on the nodes.
+- **Network simplex placement.** Brandes-Köpf left two connections in `tangle` running
+  behind unrelated nodes; network simplex was the only placement that never did, for
+  at most one more bend. Balanced alignment, extra crossing-minimisation passes, edge
+  merging and laying out from scratch were all tried and none did better — from scratch
+  did worse, as well as reshuffling what the user was reading.
+
+A fan-out is never all straight: one producer lines up with one of its consumers.
+
+What is left: one pair of connections in `tangle` shares a few pixels of line, because
+each connection still picks where to turn on its own. Routing them with knowledge of each
+other — or keeping ELK's own routes until a node moves — is the next step if it matters.
+
+ELK throws on a connection to a port it was not given, so a connection whose item no
+longer matches its node (the solver already ignores those) sits the layout out.
+
+`channel.ts` also stopped assuming Vite: under plain Node, as in a script, there is no
+`import.meta.env` at all, and that now reads as the live channel instead of throwing.
