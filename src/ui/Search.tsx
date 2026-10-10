@@ -163,6 +163,16 @@ export function Search({ open, intent, onClose, onChoose }: Props): JSX.Element 
 
   if (!open) return null;
 
+  // A sink takes the item in, so it only fits where nothing is waiting on an
+  // output from it: the open palette, or continuing out of an output port.
+  const sinkable = intent.kind === 'anything' || intent.kind === 'consumes';
+
+  /** Shift Enter: whatever row is highlighted, add its item as a sink. */
+  const commitAsSink = (indexToUse: number): void => {
+    const itemId = itemOfChoice(results[indexToUse]?.item.choice, index);
+    if (itemId) onChoose({ kind: 'sink', itemId });
+  };
+
   const commit = (indexToUse: number): void => {
     const chosen = results[indexToUse];
     if (chosen) onChoose(chosen.item.choice);
@@ -200,7 +210,8 @@ export function Search({ open, intent, onClose, onChoose }: Props): JSX.Element 
               setActive((current) => Math.max(current - 1, 0));
             } else if (event.key === 'Enter') {
               event.preventDefault();
-              commit(active);
+              if (event.shiftKey && sinkable) commitAsSink(active);
+              else commit(active);
             } else if (event.key === 'Escape') {
               event.preventDefault();
               onClose();
@@ -222,7 +233,9 @@ export function Search({ open, intent, onClose, onChoose }: Props): JSX.Element 
                   .filter(Boolean)
                   .join(' ')}
                 onPointerEnter={() => setActive(position)}
-                onClick={() => commit(position)}
+                onClick={(event) =>
+                  event.shiftKey && sinkable ? commitAsSink(position) : commit(position)
+                }
               >
                 {entry.item.icon ? (
                   <Sprite icon={entry.item.icon} size={20} />
@@ -237,9 +250,30 @@ export function Search({ open, intent, onClose, onChoose }: Props): JSX.Element 
             ))
           )}
         </div>
+        {sinkable ? (
+          <p className={styles.footer}>
+            <kbd className={styles.kbd}>Shift</kbd> <kbd className={styles.kbd}>Enter</kbd> adds it
+            as a sink
+          </p>
+        ) : null}
       </div>
     </div>
   );
+}
+
+/**
+ * The item a row stands for: a source or sink's item, or a recipe's main
+ * product — the output named after the recipe, else its first.
+ */
+function itemOfChoice(
+  choice: SearchChoice | undefined,
+  index: ReturnType<typeof useGameData>,
+): string | null {
+  if (!choice || choice.kind === 'note') return null;
+  if (choice.kind !== 'recipe') return choice.itemId;
+  const recipe = index.recipes.get(choice.recipeId);
+  if (!recipe) return null;
+  return (recipe.outputs.find((out) => out.itemId === recipe.id) ?? recipe.outputs[0])?.itemId ?? null;
 }
 
 function itemOf(intent: SearchIntent): string | null {

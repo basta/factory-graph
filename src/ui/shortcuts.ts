@@ -14,6 +14,11 @@ export const SHORTCUTS: { group: string; items: Shortcut[] }[] = [
     group: 'Build',
     items: [
       { keys: ['Ctrl', 'K'], description: 'Add a recipe, item source or sink' },
+      {
+        keys: ['Shift', 'Enter'],
+        then: 'in the search',
+        description: 'Add the item as a sink, ready for its rate',
+      },
       { keys: [], then: 'Double-click the canvas', description: 'Add a node where you clicked' },
       { keys: [], then: 'Drag from a port', description: 'Connect, or search for the next step' },
       { keys: ['E'], description: 'Expand: build a producer for every open input' },

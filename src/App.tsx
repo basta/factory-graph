@@ -33,6 +33,7 @@ import { nodeShape } from './canvas/geometry.ts';
 import { Header } from './ui/Header.tsx';
 import { Inspector } from './ui/Inspector.tsx';
 import { Search, type SearchChoice, type SearchIntent } from './ui/Search.tsx';
+import { useFocusRequest } from './ui/focus.ts';
 import { ShortcutsOverlay } from './ui/ShortcutsOverlay.tsx';
 import { Toast, type ToastAction } from './ui/Toast.tsx';
 import { isTyping, viewportDuration } from './ui/keys.ts';
@@ -392,7 +393,12 @@ function Editor({ index }: { index: GameIndex }): JSX.Element {
           : choice.kind === 'source'
             ? makeSourceNode(choice.itemId)
             : choice.kind === 'sink'
-              ? makeSinkNode(choice.itemId)
+              ? makeSinkNode(
+                  choice.itemId,
+                  // From the open search a sink is the goal, so it starts
+                  // fixed; from a dragged output it is just where that goes.
+                  search.intent.kind === 'anything' ? { type: 'rate', perSec: 1 } : undefined,
+                )
               : makeNoteNode();
       if (!node) {
         say('That recipe has no machine that can make it.');
@@ -418,9 +424,12 @@ function Editor({ index }: { index: GameIndex }): JSX.Element {
       }
       actions.endBatch();
       actions.setSelection([node.id], []);
+      if (node.kind === 'sink' && node.constraint.type === 'rate') {
+        useFocusRequest.getState().request(node.id);
+      }
       setSearch(CLOSED);
     },
-    [index, say, search.at, search.connectTo, store],
+    [index, say, search.at, search.connectTo, search.intent.kind, store],
   );
 
   // --- project actions -----------------------------------------------------

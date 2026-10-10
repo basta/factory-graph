@@ -104,3 +104,21 @@
     max-height: 60vh;
   }
 }
+
+/* One quiet line under the list for the modifier nobody would guess. */
+.footer {
+  margin: 0;
+  padding: 6px 12px;
+  border-top: 1px solid var(--line);
+  color: var(--ink-muted);
+  font-size: var(--size-port);
+}
+
+.kbd {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  padding: 0 4px;
+  border: 1px solid var(--line);
+  border-radius: 2px;
+  color: var(--ink);
+}

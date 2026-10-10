@@ -106,7 +106,7 @@ describe('planExpand', () => {
     graph.positions.circuit = { x: 1000, y: 200 };
     // Something already sits exactly where the cable would go.
     graph.nodes.push(recipe('blocker', 'iron-gear-wheel'));
-    graph.positions.blocker = { x: 1000 - 120 - 300, y: 200 };
+    graph.positions.blocker = { x: 1000 - 150 - 300, y: 200 };
 
     const result = planExpand(graph, index, DEFAULT_SETTINGS, ['circuit']);
     const placed = result.nodes[0]!;

@@ -10,6 +10,7 @@ import { PickerRow } from './PickerRow.tsx';
 import { Sprite } from './Sprite.tsx';
 import { perBlock, pollution, power, rate } from './format.ts';
 import { useFlow } from './units.ts';
+import { useFocusRequest } from './focus.ts';
 import styles from './Inspector.module.css';
 
 interface Props {
@@ -537,6 +538,8 @@ function MachineConstraint({ nodes }: { nodes: RecipeNode[] }): JSX.Element {
 
 function RateConstraint({ nodes }: { nodes: GraphNode[] }): JSX.Element {
   const flow = useFlow();
+  const focusFor = useFocusRequest((state) => state.nodeId);
+  const clearFocus = useFocusRequest((state) => state.clear);
   const setConstraint = useGraphStore((state) => state.setConstraint);
   const beginBatch = useGraphStore((state) => state.beginBatch);
   const endBatch = useGraphStore((state) => state.endBatch);
@@ -571,6 +574,8 @@ function RateConstraint({ nodes }: { nodes: GraphNode[] }): JSX.Element {
           min={0}
           step={flow.unit === 'min' ? 1 : 0.5}
           onCommit={(next) => apply({ type: 'rate', perSec: next / flow.scale })}
+          autoFocus={nodes.length === 1 && focusFor === first?.id}
+          onAutoFocused={clearFocus}
         />
       ) : null}
     </>

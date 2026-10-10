@@ -438,8 +438,11 @@ export function makeSourceNode(itemId: string): GraphNode {
   return { id: newId('s'), kind: 'source', itemId, constraint: { type: 'free' } };
 }
 
-export function makeSinkNode(itemId: string): GraphNode {
-  return { id: newId('k'), kind: 'sink', itemId, constraint: { type: 'free' } };
+export function makeSinkNode(
+  itemId: string,
+  constraint: RateConstraint = { type: 'free' },
+): GraphNode {
+  return { id: newId('k'), kind: 'sink', itemId, constraint };
 }
 
 export function makeNoteNode(text = ''): GraphNode {

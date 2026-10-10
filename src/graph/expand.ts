@@ -22,7 +22,7 @@ export interface ExpandResult {
 }
 
 /** Horizontal room between a node and the producers placed to its left. */
-const COLUMN_GAP = 120;
+const COLUMN_GAP = 150;
 /** Vertical room between producers stacked in one column. */
 const ROW_GAP = 28;
 /** Grid pitch: a placement that collides moves down by this much and tries again. */
