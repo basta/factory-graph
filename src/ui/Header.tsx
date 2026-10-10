@@ -1,4 +1,5 @@
 import { useGameData } from '../data/context.ts';
+import { CHANNEL } from '../graph/channel.ts';
 import type { PlanMeta } from '../graph/library.ts';
 import type { SolveResult } from '../solver/types.ts';
 import { IconButton } from './Button.tsx';
@@ -75,6 +76,13 @@ export function Header(props: Props): JSX.Element {
         onDelete={props.onDeletePlan}
       />
       <span className={styles.dataSet}>{data.name}</span>
+      {CHANNEL === 'staging' ? (
+        // Staging and the live site look identical otherwise, and editing the
+        // wrong one is the mistake this exists to prevent.
+        <span className={styles.channel} title="Preview build. Its plans are kept apart from the live site's.">
+          Staging
+        </span>
+      ) : null}
 
       <div className={styles.totals}>
         {result && result.status === 'ok' ? (

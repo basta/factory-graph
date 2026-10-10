@@ -52,7 +52,24 @@ GitHub Pages project site works with `BASE_PATH=/factory-graph/ npm run build`.
 `npm run check:base` serves that build from a sub-path and asserts the app boots, the
 fonts and sprite sheet load, and nothing 404s — the failure it exists to catch is an
 asset referenced from the site root, which works locally at `/` and breaks the moment
-the site lives at `/<repo>/`.
+the site lives at `/<repo>/`. `CHECK_BASE_PATH=/factory-graph/staging` points it at a
+staging build.
+
+### Staging
+
+The `staging` branch is a preview of the next release, at
+**[basta.github.io/factory-graph/staging](https://basta.github.io/factory-graph/staging/)**.
+Push to `staging` to update it; merge into `main` to ship it.
+
+Pages holds one artifact for the whole site, so every deploy builds both branches —
+`main` at the root, `staging` under `/staging/`. A push to `staging` runs the checks and
+then asks `main` to redeploy, because the Pages environment takes deploys from the default
+branch only.
+
+Staging shares an origin, and so `localStorage`, with the live site. It is built with
+`VITE_CHANNEL=staging`, which gives it its own storage keys: on first visit it starts
+from a copy of the live site's plans, and nothing it saves ever reaches them. The header
+and the tab title both say *Staging*.
 
 ## Layout
 

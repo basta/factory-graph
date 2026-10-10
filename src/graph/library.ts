@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import lzString from 'lz-string';
+import { CHANNEL, storagePrefix } from './channel.ts';
 import { parseDocument, serializeDocument, type GraphDocument } from './serialize.ts';
 
 // Same CommonJS-interop dance as `serialize.ts`: the named exports are only
@@ -18,10 +19,11 @@ const { compressToUTF16, decompressFromUTF16 } = lzString;
  * roughly 4x on a real graph — so the 5 MB budget holds a hundred-odd plans.
  */
 
-const INDEX_KEY = 'factory-graph:index';
-const PLAN_PREFIX = 'factory-graph:plan:';
+const PREFIX = storagePrefix(CHANNEL);
+const INDEX_KEY = `${PREFIX}index`;
+const PLAN_PREFIX = `${PREFIX}plan:`;
 /** The single-document key this replaced. Read once, then removed. */
-const LEGACY_KEY = 'factory-graph:document';
+const LEGACY_KEY = `${PREFIX}document`;
 
 const planKey = (id: string): string => `${PLAN_PREFIX}${id}`;
 
@@ -196,6 +198,31 @@ export function migrateLegacyPlan(): PlanMeta | null {
   return { id, name: doc.projectName, updatedAt: Date.now() };
 }
 
+/**
+ * Copies one channel's library into another, once: nothing happens when the
+ * target already has an index. Staging uses it to start from a copy of the
+ * live plans, so a change can be tried on real work without touching it.
+ * Returns how many plans were copied.
+ */
+export function seedLibrary(from: string, to: string): number {
+  if (getItem(`${to}index`) !== null) return 0;
+  const raw = getItem(`${from}index`);
+  if (raw === null) return 0;
+  let copied = 0;
+  try {
+    const parsed = indexSchema.safeParse(JSON.parse(raw));
+    if (!parsed.success) return 0;
+    for (const plan of parsed.data.plans) {
+      const body = getItem(`${from}plan:${plan.id}`);
+      if (body !== null && setItem(`${to}plan:${plan.id}`, body)) copied += 1;
+    }
+  } catch {
+    return 0;
+  }
+  setItem(`${to}index`, raw);
+  return copied;
+}
+
 /** Saves `doc` as a brand-new plan and returns its id. */
 export function createPlan(doc: GraphDocument): string {
   const id = newPlanId();
@@ -215,6 +242,7 @@ export function openingPlan(
   fromLink: GraphDocument | null,
   fallback: () => GraphDocument,
 ): { id: string; doc: GraphDocument } {
+  if (CHANNEL === 'staging') seedLibrary(storagePrefix('live'), PREFIX);
   migrateLegacyPlan();
 
   if (fromLink) {
