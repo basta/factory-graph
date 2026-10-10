@@ -682,6 +682,13 @@ async function main(): Promise<void> {
       JSON.stringify(plan.edges.map((edge) => edge.transport)),
     );
 
+    const hints = page.locator('[aria-label="Keys for the selection"]');
+    check(
+      'the key hints teach E while a recipe is selected',
+      /build inputs/.test(await hints.innerText()),
+      (await hints.innerText()).replace(/\s+/g, ' '),
+    );
+
     await page.getByRole('button', { name: 'Fast transport belt' }).click();
     await page.waitForTimeout(250);
     plan = await graphOf();
@@ -697,6 +704,11 @@ async function main(): Promise<void> {
     await page.keyboard.press('3');
     await page.waitForTimeout(200);
     plan = await graphOf();
+    check(
+      'and the belt keys while a connection is',
+      /belt tier/.test(await hints.innerText()),
+      (await hints.innerText()).replace(/\s+/g, ' '),
+    );
     check(
       '3 puts the selected connection on blue belt',
       plan.edges.find((edge) => edge.id === cableEdge.id)?.transport?.beltId === 'express-transport-belt',
@@ -729,6 +741,16 @@ async function main(): Promise<void> {
         '{"type":"rate","perSec":30}',
       JSON.stringify(plan.nodes.find((node) => node.id === sinkId)?.constraint),
     );
+
+    await page.getByRole('button', { name: 'Hide key hints' }).click();
+    await page.waitForTimeout(150);
+    check('the key hints can be hidden', (await hints.count()) === 0);
+    await page.keyboard.press('?');
+    await page.waitForTimeout(200);
+    await page.getByRole('checkbox', { name: /Show the keys for the selection/ }).check();
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(150);
+    check('and brought back from the shortcuts list', (await hints.count()) === 1);
 
     check('no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
 

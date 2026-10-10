@@ -120,6 +120,7 @@ export function EdgeInspector({ edges }: Props): JSX.Element {
                   .filter(Boolean)
                   .join(' ')}
                 aria-pressed={kind === option.value}
+                title={option.value === 'belt' ? 'Keys 1 to 4 pick the tier, 0 takes it off' : undefined}
                 onClick={() => setKind(option.value)}
               >
                 {option.label}

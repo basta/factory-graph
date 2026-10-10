@@ -681,6 +681,28 @@ recycling and barrels last.
   did nothing; the label opts back in with `pointer-events: all` and stops the click
   before the canvas reads it as a click on empty space.
 
+### Learning the keys
+
+Shortcuts nobody knows about save nobody any clicks, and a list behind `?` gets read
+once. So a strip along the bottom of the canvas shows the three or four keys that fit
+the selection — select a recipe and it says `E` builds inputs, select a connection and
+it says `1`–`4` set the belt — and changes as the selection does. A test holds every
+key it shows to one the shortcuts list documents, so it cannot advertise a key that
+does nothing. It hides with its own ×, remembered per browser, and the shortcuts list
+has the switch to bring it back.
+
+The first cut tried five hints for a recipe and clipped mid-word once the inspector
+took its 320px — and clipped the close button with it. Four hints, and the close
+button outside the part that clips.
+
+Mouse users meet the keys too: the inspector grew a *Build inputs* button carrying an
+`E` key cap, and the controls that have a key say so in their tooltip.
+
+The same screenshots showed the label wart from M7 got worse: with a node selected,
+React Flow lifts its connections above the label layer, so the line ran through the
+very labels that now carry the belt sprite. `elevateEdgesOnSelect` is off. It only
+ever mattered where two connections cross.
+
 ### Staging
 
 All of this went to a staging site first, at `/staging/` — see the README. It shares

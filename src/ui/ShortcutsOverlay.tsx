@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { CloseIcon } from './icons.tsx';
 import { IconButton } from './Button.tsx';
 import { SHORTCUTS } from './shortcuts.ts';
+import { useHints } from './hints.ts';
 import styles from './ShortcutsOverlay.module.css';
 
 interface Props {
@@ -10,6 +11,8 @@ interface Props {
 }
 
 export function ShortcutsOverlay({ open, onClose }: Props): JSX.Element | null {
+  const hintsVisible = useHints((state) => state.visible);
+  const setHintsVisible = useHints((state) => state.setVisible);
   useEffect(() => {
     if (!open) return;
     const onKey = (event: KeyboardEvent): void => {
@@ -56,6 +59,14 @@ export function ShortcutsOverlay({ open, onClose }: Props): JSX.Element | null {
             </section>
           ))}
         </div>
+        <label className={styles.toggle}>
+          <input
+            type="checkbox"
+            checked={hintsVisible}
+            onChange={(event) => setHintsVisible(event.target.checked)}
+          />
+          <span>Show the keys for the selection along the bottom of the canvas</span>
+        </label>
       </div>
     </div>
   );

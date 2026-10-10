@@ -64,3 +64,68 @@ export const SHORTCUTS: { group: string; items: Shortcut[] }[] = [
     ],
   },
 ];
+
+/**
+ * The few keys that matter for what is selected right now, shown along the
+ * bottom of the canvas. The full list behind `?` is for looking things up;
+ * this is for learning them, one at the moment it would have saved a click.
+ */
+export interface Hint {
+  /** Drawn as key caps; several caps are alternatives or a chord, as labelled. */
+  keys: string[];
+  /** A gesture with no key, such as "Double-click the count". */
+  then?: string;
+  label: string;
+}
+
+export type HintContext = 'empty' | 'canvas' | 'recipe' | 'sink' | 'source' | 'edge' | 'note';
+
+export const HINTS: Record<HintContext, Hint[]> = {
+  empty: [
+    { keys: ['Ctrl', 'K'], label: 'add a recipe or sink' },
+    { keys: ['Shift', 'Enter'], label: 'in the search adds a sink' },
+    { keys: ['?'], label: 'all shortcuts' },
+  ],
+  canvas: [
+    { keys: ['Ctrl', 'K'], label: 'add' },
+    { keys: [], then: 'Drag from a port', label: 'to build the next step' },
+    { keys: ['Ctrl', 'L'], label: 'tidy up' },
+    { keys: ['?'], label: 'all shortcuts' },
+  ],
+  // Double-clicking a count to type it is in the count's own tooltip: a strip
+  // that clips is worse than one that leaves something out.
+  recipe: [
+    { keys: ['E'], label: 'build inputs' },
+    { keys: ['F'], label: 'fix count' },
+    { keys: ['1', '2', '3'], label: 'machine tier' },
+    { keys: ['Ctrl', 'D'], label: 'duplicate' },
+  ],
+  sink: [
+    { keys: ['E'], label: 'build what makes it' },
+    { keys: ['F'], label: 'fix rate' },
+    { keys: [], then: 'Double-click the rate', label: 'to type it' },
+  ],
+  source: [
+    { keys: ['F'], label: 'fix rate' },
+    { keys: [], then: 'Double-click the rate', label: 'to type it' },
+  ],
+  edge: [
+    { keys: ['1', '2', '3', '4'], label: 'belt tier' },
+    { keys: ['0'], label: 'no belt' },
+    { keys: ['Delete'], label: 'remove' },
+  ],
+  note: [{ keys: ['Delete'], label: 'remove' }],
+};
+
+/** Which hints fit: the most capable kind of node selected wins. */
+export function hintContext(
+  selectedKinds: readonly string[],
+  selectedEdges: number,
+  graphIsEmpty: boolean,
+): HintContext {
+  for (const kind of ['recipe', 'sink', 'source', 'note'] as const) {
+    if (selectedKinds.includes(kind)) return kind;
+  }
+  if (selectedEdges > 0) return 'edge';
+  return graphIsEmpty ? 'empty' : 'canvas';
+}

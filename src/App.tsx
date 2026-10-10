@@ -650,11 +650,13 @@ function Editor({ index }: { index: GameIndex }): JSX.Element {
             onAddAt={(screen) => openSearchAtScreen(screen, { kind: 'anything' }, null)}
             onDropSearch={onDropSearch}
             onAddBusItem={openBusSearch}
+            onHideHints={() => say('Key hints hidden. Turn them back on from the shortcuts list (?).')}
           />
           <Inspector
             selection={selection}
             selectedEdges={selectedEdges}
             onClose={() => store.getState().setSelection([], [])}
+            onExpand={onExpand}
           />
         </SolveProvider>
       </div>

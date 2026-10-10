@@ -15,6 +15,7 @@ import { CanvasControls } from './CanvasControls.tsx';
 import { DotGrid } from './DotGrid.tsx';
 import { EdgeMarkers, FlowEdgeView } from './FlowEdgeView.tsx';
 import { IoNodeView } from './IoNodeView.tsx';
+import { KeyHints } from './KeyHints.tsx';
 import { MiniMap } from './MiniMap.tsx';
 import { NoteNodeView } from './NoteNodeView.tsx';
 import { PlanBar } from './PlanBar.tsx';
@@ -51,9 +52,17 @@ interface Props {
   onDropSearch: (drop: DropSearch) => void;
   /** The plan bar's bus "+": open the palette to pick an item. */
   onAddBusItem: () => void;
+  /** The key hints were dismissed; say how to get them back. */
+  onHideHints: () => void;
 }
 
-export function Canvas({ empty, onAddAt, onDropSearch, onAddBusItem }: Props): JSX.Element {
+export function Canvas({
+  empty,
+  onAddAt,
+  onDropSearch,
+  onAddBusItem,
+  onHideHints,
+}: Props): JSX.Element {
   const index = useGameData();
   const graph = useGraphStore((state) => state.graph);
   const selection = useGraphStore((state) => state.selection);
@@ -186,7 +195,9 @@ export function Canvas({ empty, onAddAt, onDropSearch, onAddBusItem }: Props): J
         multiSelectionKeyCode={['Shift', 'Control', 'Meta']}
         selectionKeyCode={null}
         nodesConnectable
-        elevateEdgesOnSelect
+        // Raising a selected connection drew its line over its own label —
+        // the rate and belt you selected it to read.
+        elevateEdgesOnSelect={false}
         connectionRadius={26}
         isValidConnection={isValidConnection}
         onNodesChange={onNodesChange}
@@ -258,6 +269,7 @@ export function Canvas({ empty, onAddAt, onDropSearch, onAddBusItem }: Props): J
       ) : null}
       <PlanBar onAddBusItem={onAddBusItem} />
       <MiniMap />
+      <KeyHints onHide={onHideHints} />
       <CanvasControls />
     </div>
   );
