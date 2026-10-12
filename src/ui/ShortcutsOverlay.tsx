@@ -10,9 +10,11 @@ interface Props {
   /** Which view's keys to list; the two share only the project ones. */
   view?: 'graph' | 'build';
   onClose: () => void;
+  /** Reopens the what's-new list. */
+  onWhatsNew?: () => void;
 }
 
-export function ShortcutsOverlay({ open, view = 'graph', onClose }: Props): JSX.Element | null {
+export function ShortcutsOverlay({ open, view = 'graph', onClose, onWhatsNew }: Props): JSX.Element | null {
   const hintsVisible = useHints((state) => state.visible);
   const setHintsVisible = useHints((state) => state.setVisible);
   useEffect(() => {
@@ -37,6 +39,11 @@ export function ShortcutsOverlay({ open, view = 'graph', onClose }: Props): JSX.
       >
         <div className={styles.head}>
           <span className={styles.title}>Keyboard shortcuts</span>
+          {onWhatsNew ? (
+            <button type="button" className={styles.whatsNew} onClick={onWhatsNew}>
+              What’s new
+            </button>
+          ) : null}
           <IconButton label="Close" onClick={onClose}>
             <CloseIcon />
           </IconButton>

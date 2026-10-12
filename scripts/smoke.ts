@@ -880,6 +880,23 @@ async function main(): Promise<void> {
     await page.getByRole('tab', { name: 'Graph' }).click();
     await page.waitForTimeout(300);
 
+    // --- what's new -----------------------------------------------------------
+    // A first visit marked everything seen, so nothing has popped up so far.
+    // Forgetting that is what a returning visitor after a deploy looks like.
+    check('no what’s-new popup on a first visit', (await page.getByRole('dialog', { name: 'What\'s new' }).count()) === 0);
+    await page.evaluate(() => {
+      for (const key of Object.keys(localStorage)) if (key.endsWith('seen-changelog')) localStorage.removeItem(key);
+    });
+    await page.reload();
+    await page.waitForTimeout(800);
+    const news = page.getByRole('dialog', { name: 'What\'s new' });
+    check('a returning visitor sees what is new', (await news.count()) === 1);
+    await news.getByRole('button', { name: 'Got it' }).click();
+    await page.waitForTimeout(200);
+    await page.reload();
+    await page.waitForTimeout(800);
+    check('and only once', (await page.getByRole('dialog', { name: 'What\'s new' }).count()) === 0);
+
     check('no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
 
     // --- reduced motion ------------------------------------------------------

@@ -39,6 +39,14 @@ import { Inspector } from './ui/Inspector.tsx';
 import { Search, type SearchChoice, type SearchIntent } from './ui/Search.tsx';
 import { useFocusRequest } from './ui/focus.ts';
 import { ShortcutsOverlay } from './ui/ShortcutsOverlay.tsx';
+import { WhatsNew } from './ui/WhatsNew.tsx';
+import {
+  CHANGELOG,
+  markAllSeen,
+  readLastSeen,
+  unseenEntries,
+  type ChangelogEntry,
+} from './ui/changelog.ts';
 import { Toast, type ToastAction } from './ui/Toast.tsx';
 import { isTyping, viewportDuration } from './ui/keys.ts';
 import { solve } from './solver/index.ts';
@@ -47,6 +55,9 @@ import styles from './App.module.css';
 
 export function App(): JSX.Element {
   const [index, setIndex] = useState<GameIndex | null>(null);
+  // Someone with saved plans has been here before, so what changed since is
+  // news to them; a first visit has nothing to compare against.
+  const [returning, setReturning] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -57,6 +68,7 @@ export function App(): JSX.Element {
         // Restore before the canvas first renders, so React Flow's own
         // `fitView` has a graph to frame.
         const fromLink = documentFromLocation();
+        setReturning(readIndex().plans.length > 0);
         const { id, doc } = openingPlan(fromLink, () => ({
           graph: emptyGraph(loaded.data.id, lastSettings()),
           projectName: 'Untitled factory',
@@ -91,7 +103,7 @@ export function App(): JSX.Element {
   return (
     <GameDataProvider value={index}>
       <ReactFlowProvider>
-        <Editor index={index} />
+        <Editor index={index} returning={returning} />
       </ReactFlowProvider>
     </GameDataProvider>
   );
@@ -113,7 +125,20 @@ const CLOSED: SearchState = {
   connectTo: null,
 };
 
-function Editor({ index }: { index: GameIndex }): JSX.Element {
+function Editor({ index, returning }: { index: GameIndex; returning: boolean }): JSX.Element {
+  // What shipped since the last visit, shown once. A first visit is marked
+  // as having seen everything, so the popup only ever reports changes.
+  const [whatsNew, setWhatsNew] = useState<readonly ChangelogEntry[]>(() => {
+    if (!returning) {
+      markAllSeen();
+      return [];
+    }
+    return unseenEntries(CHANGELOG, readLastSeen());
+  });
+  const closeWhatsNew = useCallback(() => {
+    markAllSeen();
+    setWhatsNew([]);
+  }, []);
   const flow = useReactFlow();
   const [helpOpen, setHelpOpen] = useState(false);
   const [search, setSearch] = useState<SearchState>(CLOSED);
@@ -547,6 +572,9 @@ function Editor({ index }: { index: GameIndex }): JSX.Element {
       const actions = store.getState();
       const control = event.ctrlKey || event.metaKey;
 
+      // The popup handles its own Escape and owns the keyboard while open.
+      if (whatsNew.length > 0) return;
+
       if (event.key === 'Escape') {
         if (search.open) setSearch(CLOSED);
         else if (plansOpen) onPlansOpenChange(false);
@@ -690,6 +718,7 @@ function Editor({ index }: { index: GameIndex }): JSX.Element {
     search.open,
     store,
     view,
+    whatsNew,
   ]);
 
   const past = useGraphStore((state) => state.history.past.length);
@@ -742,7 +771,7 @@ function Editor({ index }: { index: GameIndex }): JSX.Element {
           <BuildView
             buildWorld={buildWorld}
             result={result}
-            keysBlocked={helpOpen || plansOpen}
+            keysBlocked={helpOpen || plansOpen || whatsNew.length > 0}
             say={say}
           />
         )}
@@ -755,7 +784,16 @@ function Editor({ index }: { index: GameIndex }): JSX.Element {
           onChoose={onChoose}
         />
       ) : null}
-      <ShortcutsOverlay open={helpOpen} view={view} onClose={() => setHelpOpen(false)} />
+      <ShortcutsOverlay
+        open={helpOpen}
+        view={view}
+        onClose={() => setHelpOpen(false)}
+        onWhatsNew={() => {
+          setHelpOpen(false);
+          setWhatsNew(CHANGELOG.slice(0, 3));
+        }}
+      />
+      <WhatsNew entries={whatsNew} onClose={closeWhatsNew} />
       <Toast
         message={toast?.message ?? null}
         action={toast?.action ?? null}

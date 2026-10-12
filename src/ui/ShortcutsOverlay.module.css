@@ -102,3 +102,16 @@
   width: 13px;
   height: 13px;
 }
+
+/* A quiet link back to the what's-new list, beside the close button. */
+.whatsNew {
+  margin-left: auto;
+  margin-right: 8px;
+  color: var(--ink-muted);
+  border-bottom: 1px solid var(--line);
+}
+
+.whatsNew:hover {
+  color: var(--ink);
+  border-bottom-color: var(--copper);
+}
