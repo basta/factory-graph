@@ -798,3 +798,75 @@ identity, so moving one node does not re-render every connection. `scoreLayout` 
 from the same plan, so the score is of what is on screen; across the fixtures and the
 science tree, shared stretches went to zero, and label clashes from 24 to 2 on the
 science tree (two runs too short for a label anywhere).
+
+## M12 — Build view
+
+A second view per plan: lay the design out on a tile grid with belts, inserters and
+machines, then run it a tick at a time and see whether it delivers what the graph
+said it would. The plan document gained an optional `build`, so a build saves,
+shares, exports and undoes with the graph it belongs to. Plans and links from before
+it existed load unchanged, and a plan with nothing built saves byte-identical to
+before.
+
+### Decisions
+
+- **One undo stack per plan, not one per view.** The build lives in the same store
+  and the same snapshots as the graph. A second stack would have needed its own
+  parking on plan switch, its own autosave payload, and an answer to "what does Ctrl Z
+  do after I edited both". With one stack the answer is "the last thing you did",
+  which is also what a document editor does with two panes.
+- **The simulated world is not in the document.** What is on the belts is runtime
+  state in `src/sim/`, compiled from the build. An edit recompiles and carries each
+  entity's contents across by id, so you can re-aim a belt or swap an inserter on a
+  running design without draining it. The world is held at the editor level, so a
+  look at the graph and back finds the simulation where it was left. Opening another
+  plan, or pressing Reset, starts from nothing.
+- **Integer belt geometry.** A tile is 32 units, items are 8 apart, and a yellow belt
+  moves 1 unit a tick. Red, blue and turbo are 2, 3 and 4. Every position is an integer
+  and every tier lands exactly on its game throughput (15/30/45/60 per second), with
+  no drift to explain.
+- **Sources and sinks instead of drills and furnace columns.** A source is a loader
+  that fills the belt it faces, or an infinite chest for an inserter, optionally
+  rate-limited. A sink counts what arrives. A design under test is fed and drained by
+  these, the way people test designs in the game's editor with infinity chests.
+- **Footprints and inserter timings are hand-kept** in `build/entities.ts`, from the
+  2.0 prototypes, because FactorioLab's data models throughput, not entities. The
+  inserter half-swing is `0.5 / rotation_speed` ticks, and the tests check it against
+  the wiki's chest-to-chest figures (0.6, 0.83, 1.2 and 2.31 per second).
+
+### Deliberate simplifications
+
+These are listed so nobody mistakes them for bugs:
+
+- **No pipes.** Fluid ingredients and products are assumed piped in and out, and the
+  machine's inspector says so. Foundry and oil builds still simulate their solid side.
+- **No splitters, underground belts, modules or beacons yet.** Machine base
+  productivity (foundry, EM plant, biochamber) is modelled. Module effects are not.
+- **Curves use full-length lanes.** In the game the inner lane of a curve is shorter.
+  Throughput is the same either way; only how long an item spends on the corner
+  differs.
+- **Insertion limits are approximate.** An inserter tops a machine up to two crafts'
+  worth, or a little over a second's worth for fast recipes. The game's rule is in the
+  same spirit and does not change a design's verdict. Machines stop when an output
+  reaches a stack.
+- **Inserters do not need power or fuel**, and pick off belts without the game's
+  lane-position subtleties. Belt pickup waits up to 12 ticks for a fuller hand.
+
+### Bugs the tests and screenshots caught
+
+- **An express belt ran at 40/s, not 45.** At 3 units a tick, a new item was only
+  allowed on once the last one had moved a full gap. That landed every item at 9
+  units, not 8. Sources now put the new item exactly a gap behind the last one.
+- **A dead-end tile held five items a lane.** Items stopped at the tile edge, so 32,
+  24, 16, 8 and 0 all fitted. They now stop half a gap short.
+- **Inserters were 2 ticks slow per cycle.** Arriving and acting were separate
+  ticks, so a fast inserter managed 2.14 swings a second. Arrival now acts on the same
+  tick, giving the game's 2.31.
+- **The report doubled the plan's output.** `totals.outputs` already includes sinks,
+  so adding sink ports on top counted them twice.
+- **Leaving the build view reset the simulation.** The world lived inside the view and
+  was rebuilt when it remounted. Now it is held one level up.
+- `circuit-cell` (`npx tsx scripts/make-fixture.ts circuit-cell`) is the one to look
+  at. One cable assembler feeds one circuit assembler. The plan asks for 1.5
+  circuits/s and the build makes 1.0. The circuit machine's bar and its 67 % go to
+  `--warn`, which is the whole point of the view.

@@ -3,6 +3,7 @@ import { useGameData } from '../data/context.ts';
 import { preferredMachine, settingsOf } from '../graph/settings.ts';
 import { useGraphStore } from '../graph/store.ts';
 import { recipeOrder } from '../data/recipes.ts';
+import { defaultBuildMachine } from '../build/entities.ts';
 import { Sprite } from './Sprite.tsx';
 import { rank } from './fuzzy.ts';
 import styles from './Search.module.css';
@@ -29,9 +30,16 @@ export type SearchChoice =
   /** A node already on the canvas, to connect rather than duplicate. */
   | { kind: 'existing'; nodeId: string };
 
+/**
+ * What the palette lists. The graph wants everything; the build view asks for
+ * a recipe it can put in a machine, or an item a source can supply.
+ */
+export type SearchScope = 'graph' | 'build-recipe' | 'build-item';
+
 interface Props {
   open: boolean;
   intent: SearchIntent;
+  scope?: SearchScope;
   onClose: () => void;
   onChoose: (choice: SearchChoice) => void;
 }
@@ -48,7 +56,13 @@ interface Row {
 
 const LIMIT = 40;
 
-export function Search({ open, intent, onClose, onChoose }: Props): JSX.Element | null {
+export function Search({
+  open,
+  intent,
+  scope = 'graph',
+  onClose,
+  onChoose,
+}: Props): JSX.Element | null {
   const index = useGameData();
   const settings = useGraphStore((state) => settingsOf(state.graph));
   const graphNodes = useGraphStore((state) => state.graph.nodes);
@@ -94,7 +108,20 @@ export function Search({ open, intent, onClose, onChoose }: Props): JSX.Element 
           );
 
     const rows: Row[] = [];
-
+    if (scope === 'build-item') {
+      for (const item of index.data.items) {
+        // Fluids need pipes, which the build view does not have.
+        if (item.category === 'technology' || item.isFluid) continue;
+        rows.push({
+          choice: { kind: 'source', itemId: item.id },
+          name: item.name,
+          id: item.id,
+          detail: 'as source',
+          icon: item.icon,
+        });
+      }
+      return rows;
+    }
     // Nodes already on the canvas that fit, first: a shared intermediate
     // should be one node feeding two consumers, not a copy per consumer.
     if (intent.kind === 'consumes' || intent.kind === 'produces') {
@@ -141,7 +168,11 @@ export function Search({ open, intent, onClose, onChoose }: Props): JSX.Element 
     }
     for (const recipe of recipes) {
       // The machine the node will actually get, which is the plan's pick.
-      const machineId = preferredMachine(index, recipe, settings);
+      const machineId =
+        scope === 'build-recipe'
+          ? defaultBuildMachine(index, recipe)
+          : preferredMachine(index, recipe, settings);
+      if (machineId === null) continue;
       rows.push({
         choice: { kind: 'recipe', recipeId: recipe.id },
         name: recipe.name,
@@ -150,6 +181,7 @@ export function Search({ open, intent, onClose, onChoose }: Props): JSX.Element 
         icon: recipe.icon,
       });
     }
+    if (scope === 'build-recipe') return rows;
 
     // Sources and sinks are offered for every item, at the end of the list, so
     // "iron plate" finds the recipe first and the two endpoints right after.
@@ -188,7 +220,7 @@ export function Search({ open, intent, onClose, onChoose }: Props): JSX.Element 
       });
     }
     return rows;
-  }, [open, intent, index, settings, graphNodes]);
+  }, [open, intent, index, settings, graphNodes, scope]);
 
   const results = useMemo(
     () => rank(candidates, query, (row) => ({ name: row.name, id: row.id }), LIMIT),
@@ -230,7 +262,13 @@ export function Search({ open, intent, onClose, onChoose }: Props): JSX.Element 
           ref={inputRef}
           className={styles.input}
           value={query}
-          placeholder={placeholderFor(intent, index.items.get(itemOf(intent) ?? '')?.name)}
+          placeholder={
+            scope === 'build-recipe'
+              ? 'Recipe for the machine'
+              : scope === 'build-item'
+                ? 'Item the source supplies'
+                : placeholderFor(intent, index.items.get(itemOf(intent) ?? '')?.name)
+          }
           aria-label="Search recipes and items"
           role="combobox"
           aria-expanded="true"

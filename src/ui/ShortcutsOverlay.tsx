@@ -1,16 +1,18 @@
 import { useEffect } from 'react';
 import { CloseIcon } from './icons.tsx';
 import { IconButton } from './Button.tsx';
-import { SHORTCUTS } from './shortcuts.ts';
+import { BUILD_SHORTCUTS, SHORTCUTS } from './shortcuts.ts';
 import { useHints } from './hints.ts';
 import styles from './ShortcutsOverlay.module.css';
 
 interface Props {
   open: boolean;
+  /** Which view's keys to list; the two share only the project ones. */
+  view?: 'graph' | 'build';
   onClose: () => void;
 }
 
-export function ShortcutsOverlay({ open, onClose }: Props): JSX.Element | null {
+export function ShortcutsOverlay({ open, view = 'graph', onClose }: Props): JSX.Element | null {
   const hintsVisible = useHints((state) => state.visible);
   const setHintsVisible = useHints((state) => state.setVisible);
   useEffect(() => {
@@ -40,7 +42,7 @@ export function ShortcutsOverlay({ open, onClose }: Props): JSX.Element | null {
           </IconButton>
         </div>
         <div className={styles.groups}>
-          {SHORTCUTS.map((group) => (
+          {(view === 'build' ? BUILD_SHORTCUTS : SHORTCUTS).map((group) => (
             <section key={group.group} className={styles.group}>
               <h2 className={styles.groupName}>{group.group}</h2>
               {group.items.map((item) => (

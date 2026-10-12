@@ -14,6 +14,34 @@
   color: var(--ink-muted);
 }
 
+/* Graph or build: one control, the open view raised rather than coloured. */
+.views {
+  display: flex;
+  flex: none;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.viewTab {
+  height: 24px;
+  padding: 0 10px;
+  color: var(--ink-muted);
+}
+
+.viewTab + .viewTab {
+  border-left: 1px solid var(--line);
+}
+
+.viewTab:hover {
+  color: var(--ink);
+}
+
+.viewOn {
+  background: var(--panel-raised);
+  color: var(--ink);
+}
+
 /* Says which site this is. Bordered so it reads as a label, not a name. */
 .channel {
   flex: none;
