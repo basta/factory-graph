@@ -26,6 +26,9 @@ export const LANE_END = LANE_LENGTH - ITEM_GAP / 2;
 
 const endOf = (lane: Lane): number => lane.length - ITEM_GAP / 2;
 
+/** How far either side of a tile's middle an inserter will put an item down. */
+export const DROP_SPREAD = 12;
+
 /** How long an inserter at a belt waits for a fuller hand before swinging with what it has. */
 export const BELT_PICKUP_PATIENCE = 12;
 
@@ -202,6 +205,7 @@ function craft(world: World, machine: MachineState): void {
     if ((machine.inputs.get(ingredient.itemId) ?? 0) < ingredient.amount) {
       machine.status = 'starved';
       machine.progress = 0;
+      record(machine.starved, world.tick);
       return;
     }
   }
@@ -333,10 +337,17 @@ function give(world: World, inserter: InserterState, to: Ref, itemId: string, co
       const lanes =
         to.kind === 'belt' ? world.belts[to.index]!.lanes : world.undergrounds[to.index]!.lanes;
       const lane = world.lanes[lanes[inserter.dropLane]]!;
-      const at = LANE_LENGTH / 2;
-      if (!roomAt(lane, at)) return 0;
-      insertSorted(lane, { itemId, pos: at });
-      return 1;
+      // Into whatever gap is passing through the tile, nearest the middle
+      // first. Holding out for the exact middle let a second inserter on a
+      // busy lane wait out most gaps and starve the machine behind it.
+      for (let offset = 0; offset <= DROP_SPREAD; offset += 1) {
+        for (const at of offset === 0 ? [LANE_LENGTH / 2] : [LANE_LENGTH / 2 - offset, LANE_LENGTH / 2 + offset]) {
+          if (!roomAt(lane, at)) continue;
+          insertSorted(lane, { itemId, pos: at });
+          return 1;
+        }
+      }
+      return 0;
     }
     case 'sink':
       deliverToSink(world, to.index, itemId, count);

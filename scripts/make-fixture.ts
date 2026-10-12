@@ -417,6 +417,41 @@ function beltShapes(): GraphDocument {
 
 FIXTURES['belt-shapes'] = beltShapes();
 
+/**
+ * Green science from plates: six recipes, two of them feeding more than one
+ * consumer, for laying out a whole plan (Shift B).
+ */
+FIXTURES['green-science'] = {
+  projectName: 'Green science',
+  graph: build(
+    [
+      source('fe', 'iron-plate', { x: -400, y: 0 }),
+      source('cu', 'copper-plate', { x: -400, y: 260 }),
+      recipe('gear', 'iron-gear-wheel', 'assembling-machine-2', { x: 0, y: -60 }),
+      recipe('cable', 'copper-cable', 'assembling-machine-2', { x: 0, y: 260 }),
+      recipe('circuit', 'electronic-circuit', 'assembling-machine-2', { x: 380, y: 220 }),
+      recipe('ins', 'inserter', 'assembling-machine-2', { x: 760, y: 120 }),
+      recipe('belt', 'transport-belt', 'assembling-machine-2', { x: 380, y: -100 }),
+      recipe('green', 'logistic-science-pack', 'assembling-machine-2', { x: 1140, y: 40 }),
+      sink('out', 'logistic-science-pack', { x: 1520, y: 60 }, 0.25),
+    ],
+    [
+      link('fe', 'gear', 'iron-plate'),
+      link('cu', 'cable', 'copper-plate'),
+      link('fe', 'circuit', 'iron-plate'),
+      link('cable', 'circuit', 'copper-cable'),
+      link('circuit', 'ins', 'electronic-circuit'),
+      link('gear', 'ins', 'iron-gear-wheel'),
+      link('fe', 'ins', 'iron-plate'),
+      link('gear', 'belt', 'iron-gear-wheel'),
+      link('fe', 'belt', 'iron-plate'),
+      link('ins', 'green', 'inserter'),
+      link('belt', 'green', 'transport-belt'),
+      link('green', 'out', 'logistic-science-pack'),
+    ],
+  ),
+};
+
 const name = process.argv[2] ?? 'green-circuits';
 const fixture = FIXTURES[name];
 if (!fixture) {

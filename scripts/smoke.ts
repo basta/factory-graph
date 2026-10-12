@@ -877,6 +877,21 @@ async function main(): Promise<void> {
       `${beforeRow} -> ${row.kinds.length}`,
     );
     check('and selects the new row', row.selected === row.kinds.length - beforeRow, `${row.selected} selected`);
+
+    // Shift B lays out the whole plan: pin the gear node so it has a rate.
+    await page.getByRole('tab', { name: 'Graph' }).click();
+    await page.waitForTimeout(300);
+    await page.keyboard.press('f');
+    await page.waitForTimeout(200);
+    await page.keyboard.press('Shift+B');
+    await page.waitForTimeout(800);
+    const whole = await build();
+    check(
+      'Shift B lays out the whole plan',
+      whole.kinds.length > row.kinds.length &&
+        (await page.getByRole('tab', { name: 'Build' }).getAttribute('aria-selected')) === 'true',
+      `${row.kinds.length} -> ${whole.kinds.length}`,
+    );
     await page.getByRole('tab', { name: 'Graph' }).click();
     await page.waitForTimeout(300);
 

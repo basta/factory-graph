@@ -34,6 +34,8 @@ import type { BuildEntity, Dir, Tile } from './types.ts';
 import styles from './BuildView.module.css';
 
 interface Props {
+  /** Lays every recipe in the plan out as rows joined by belts. */
+  onBuildPlan: () => void;
   /** The plan's simulated world, owned by the editor so it outlives this view. */
   buildWorld: BuildWorld;
   /** The plan's solve, for the report's side-by-side. */
@@ -68,7 +70,7 @@ const SHAPE_NAMES: Record<BeltShape, string> = {
   splitter: 'Splitter',
 };
 
-export function BuildView({ buildWorld, result, keysBlocked, say }: Props): JSX.Element {
+export function BuildView({ onBuildPlan, buildWorld, result, keysBlocked, say }: Props): JSX.Element {
   const index = useGameData();
   const build = useGraphStore((state) => state.build);
   const selection = useGraphStore((state) => state.buildSelection);
@@ -229,6 +231,9 @@ export function BuildView({ buildWorld, result, keysBlocked, say }: Props): JSX.
         } else if (hovered.kind === 'sink' || hovered.kind === 'chest') {
           setKind(hovered.kind);
         }
+      } else if (key === 'b' && event.shiftKey) {
+        event.preventDefault();
+        onBuildPlan();
       } else if (key === 'p') {
         event.preventDefault();
         sim.setRunning(!sim.running);
@@ -246,7 +251,7 @@ export function BuildView({ buildWorld, result, keysBlocked, say }: Props): JSX.
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [chooseTool, copy, keysBlocked, kind, picking, sim, stamp]);
+  }, [chooseTool, copy, keysBlocked, kind, onBuildPlan, picking, sim, stamp]);
 
   const world = sim.world();
   const sprite = (id: string, size = 20): JSX.Element | null => {
@@ -410,6 +415,14 @@ export function BuildView({ buildWorld, result, keysBlocked, say }: Props): JSX.
             ) : null}
           </div>
 
+          <button
+            type="button"
+            className={styles.planButton}
+            title="Lay out every recipe in the plan, joined by belts (Shift B)"
+            onClick={onBuildPlan}
+          >
+            Lay out plan
+          </button>
           <div className={styles.sim}>
             <button type="button" className={styles.tool} title="Reset: empty everything" aria-label="Reset simulation" onClick={sim.reset}>
               <ResetIcon />

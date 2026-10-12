@@ -19,6 +19,17 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
+    id: '2026-10-12-whole-plan',
+    date: '12 Oct 2026',
+    title: 'Lay out the whole plan',
+    items: [
+      'Press Shift B, or Lay out plan in the build toolbar, to build every recipe in the plan at once: one row per recipe, stacked in production order, with belts routed between them. Belts go round what is in the way, or under it with undergrounds.',
+      'Raw inputs come from sources and the final products go to sinks that know the planned rate. Where one output feeds several recipes, the first gets a belt and the rest get a source, and the message says how many.',
+      'Machines are drawn in red only when they wait for ingredients. One sitting idle because nothing downstream needs more stays brass.',
+      'Inserters now drop into any gap on their tile, so two inserters can share a busy lane.',
+    ],
+  },
+  {
     id: '2026-10-12-belt-shapes',
     date: '12 Oct 2026',
     title: 'Undergrounds, splitters, and laying out a recipe',

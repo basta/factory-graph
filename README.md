@@ -34,7 +34,8 @@ Both run in CI.
 To poke at a specific graph, `npx tsx scripts/make-fixture.ts <name>` prints a
 share hash you can paste after the `#` — `green-circuits`, `unbalanced`,
 `saturated-belt`, `over-belt`, `blocks`, `kovarex`, `tangle`, `beacons`,
-`no-constraint`, and two that come with a build to open in the Build view: `circuit-cell` and `belt-shapes`.
+`no-constraint`, two that come with a build to open in the Build view, `circuit-cell` and `belt-shapes`, and
+`green-science`, six recipes to try Lay out plan (Shift B) on.
 
 ## Refreshing the game data
 

@@ -168,6 +168,12 @@ export interface MachineState {
   status: MachineStatus;
   /** Ticks spent crafting. */
   working: Meter;
+  /**
+   * Ticks spent waiting for an ingredient. Kept apart from idle time with
+   * the output full: that is a machine with more capacity than the next
+   * step wants, which is fine; this is one the step before cannot keep fed.
+   */
+  starved: Meter;
   crafts: Meter;
 }
 
@@ -296,6 +302,7 @@ function newMachine(entity: MachineEntity, index: GameIndex): MachineState {
     bonus: 0,
     status: usable ? 'starved' : 'no-recipe',
     working: createMeter(),
+    starved: createMeter(),
     crafts: createMeter(),
   };
 }
@@ -683,6 +690,7 @@ function carryOver(previous: World, world: World): void {
     if (was === null) continue;
     const before = previous.machines[was]!;
     machine.working = before.working;
+    machine.starved = before.starved;
     machine.crafts = before.crafts;
     // A different recipe or machine starts empty; the old contents would be
     // the wrong items or the wrong progress.

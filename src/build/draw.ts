@@ -62,8 +62,17 @@ export function readPalette(): Palette {
   };
 }
 
-/** A machine under this share of the time spent crafting is not keeping up. */
-export const KEEPING_UP = 0.95;
+/**
+ * A machine that spent more than this share of the window waiting for an
+ * ingredient is not being kept fed, and is drawn in --warn. Idle with its
+ * output full is not counted: that is spare capacity, not a problem.
+ */
+export const STARVED_LIMIT = 0.05;
+
+/** Share of the window a machine spent waiting for an ingredient. */
+export function starvedShare(machine: World['machines'][number], tick: number): number {
+  return meterRate(machine.starved, tick) / 60;
+}
 
 export interface Ghost {
   entities: BuildEntity[];
@@ -613,7 +622,7 @@ function drawMachine(
   if (!machine.recipe) return;
   // Along the bottom: the current craft's progress, thin, and under it the
   // share of time spent crafting, which goes to --warn when the machine is
-  // not keeping up.
+  // waiting on its ingredients.
   const inset = 6;
   const barW = pw - inset * 2;
   const barH = Math.max(2, t / 10);
@@ -622,7 +631,7 @@ function drawMachine(
   ctx.fillRect(x + inset, barY, barW, barH);
   if (world.tick > 0) {
     const share = Math.min(1, meterRate(machine.working, world.tick) / 60);
-    ctx.fillStyle = share >= KEEPING_UP ? palette.brass : palette.warn;
+    ctx.fillStyle = starvedShare(machine, world.tick) > STARVED_LIMIT ? palette.warn : palette.brass;
     ctx.fillRect(x + inset, barY, barW * share, barH);
   }
   if (machine.crafting) {

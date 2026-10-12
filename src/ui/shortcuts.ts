@@ -39,6 +39,7 @@ export const SHORTCUTS: ShortcutGroup[] = [
       { keys: [], then: 'Drag from a port', description: 'Connect, or search for the next step' },
       { keys: ['E'], description: 'Expand: build a producer for every open input' },
       { keys: ['B'], description: 'Lay the selected recipe out in the build view, to test it' },
+      { keys: ['Shift', 'B'], description: 'Lay the whole plan out, joined by belts' },
       { keys: ['Ctrl', 'K'], then: 'then "note"', description: 'Add a note to the canvas' },
       { keys: ['Ctrl', 'D'], description: 'Duplicate selection' },
       { keys: ['Delete'], description: 'Delete selection' },
@@ -102,6 +103,7 @@ export const BUILD_SHORTCUTS: ShortcutGroup[] = [
   {
     group: 'Simulation',
     items: [
+      { keys: ['Shift', 'B'], description: 'Lay the whole plan out, joined by belts' },
       { keys: ['P'], description: 'Play or pause' },
       { keys: ['.'], description: 'Step one tick' },
       { keys: [], then: 'Scroll', description: 'Zoom to cursor' },

@@ -35,6 +35,7 @@ import { Header, type View } from './ui/Header.tsx';
 import { BuildView } from './build/BuildView.tsx';
 import { useBuildWorld } from './build/useSimulation.ts';
 import { layoutRow, rowOrigin } from './build/fromGraph.ts';
+import { layoutPlan } from './build/wholePlan.ts';
 import { Inspector } from './ui/Inspector.tsx';
 import { Search, type SearchChoice, type SearchIntent } from './ui/Search.tsx';
 import { useFocusRequest } from './ui/focus.ts';
@@ -376,6 +377,35 @@ function Editor({ index, returning }: { index: GameIndex; returning: boolean }):
   }, [index, result, say, store]);
 
   /**
+   * Shift B: every recipe in the plan laid out as stacked rows joined by
+   * routed belts, to the right of anything already built.
+   */
+  const onBuildPlan = useCallback(() => {
+    const actions = store.getState();
+    const layout = layoutPlan(index, actions.graph, result, {
+      beltId: settingsOf(actions.graph).beltId,
+      hands: actions.build.hands,
+      origin: rowOrigin(actions.build.entities, 14),
+      existing: actions.build.entities,
+    });
+    if ('ok' in layout) {
+      say(layout.reason);
+      return;
+    }
+    actions.beginBatch();
+    const placed = actions.placeEntities(layout.entities);
+    actions.endBatch();
+    actions.setBuildSelection(placed.filter((id): id is string => id !== null));
+    setView('build');
+    const rows = layout.rows === 1 ? '1 row' : `${layout.rows} rows`;
+    const belts =
+      layout.routed === 0 ? '' : ` joined by ${layout.routed === 1 ? '1 belt' : `${layout.routed} belts`}`;
+    // A whole plan can have a note per row; the first two say enough.
+    const extra = layout.notes.length > 2 ? ` And ${layout.notes.length - 2} more notes.` : '';
+    say([`Laid out ${rows}${belts}. Press P to run it.`, ...layout.notes.slice(0, 2)].join(' ') + extra);
+  }, [index, result, say, store]);
+
+  /**
    * E: a producer for every unconnected input of the selection. The new nodes
    * become the selection, so pressing E again builds the next step up. An
    * input with a real choice of recipe opens the search for that one.
@@ -677,7 +707,8 @@ function Editor({ index, returning }: { index: GameIndex; returning: boolean }):
         onExpand();
       } else if (event.key.toLowerCase() === 'b' && !control && !event.altKey) {
         event.preventDefault();
-        onBuildThis();
+        if (event.shiftKey) onBuildPlan();
+        else onBuildThis();
       } else if (event.key.toLowerCase() === 'f' && !control) {
         // Pin or unpin every selected recipe node at its solved count.
         const nodes = actions.graph.nodes.filter((node) => actions.selection.includes(node.id));
@@ -708,6 +739,7 @@ function Editor({ index, returning }: { index: GameIndex; returning: boolean }):
     index,
     onExpand,
     onBuildThis,
+    onBuildPlan,
     onExport,
     onImport,
     onLayout,
@@ -769,6 +801,7 @@ function Editor({ index, returning }: { index: GameIndex; returning: boolean }):
           </SolveProvider>
         ) : (
           <BuildView
+            onBuildPlan={onBuildPlan}
             buildWorld={buildWorld}
             result={result}
             keysBlocked={helpOpen || plansOpen || whatsNew.length > 0}

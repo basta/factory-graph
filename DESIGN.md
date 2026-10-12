@@ -198,6 +198,11 @@ this layout actually move the items the graph says it should.
   a row: machines side by side, ingredients on one or two belts a lane each, inserters
   sized to the rate, output to a sink that carries the node's planned rate. It opens
   the build view framed on the new row and says up front what will not keep up.
+- **Lay out plan** (Shift B, or the one text button in the build toolbar) does the same
+  for every recipe at once: rows stacked in production order, a belt routed along each
+  link, the plan's raw inputs from sources and its products to sinks.
+- **Red on a machine means starved**, waiting for an ingredient for more than 5 % of the
+  window. A machine idle because its output is full is spare capacity, and stays brass.
 - **Keys follow the game** where it has one: R rotates, Q picks up the tool for what is
   under the pointer, right-click removes, a dragged belt follows the pointer round
   corners. Ctrl C / Ctrl V copy a selection as a stamp, and R turns the stamp.

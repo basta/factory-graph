@@ -192,6 +192,16 @@ describe('machines', () => {
     expect(meterRate(world.machines[0]!.working, world.tick) / 60).toBeLessThan(0.35);
   });
 
+  it('count waiting for ingredients as starved, and a full output as not', () => {
+    const starved = gearCell('inserter', 'base');
+    expect(meterRate(starved.machines[0]!.starved, starved.tick) / 60).toBeGreaterThan(0.5);
+    const blocked = run(
+      [source(0, 1, N, 'iron-plate'), inserter(1, 1, E, 'fast-inserter'), machine(2, 0, 'assembling-machine-2', 'iron-gear-wheel')],
+      120,
+    );
+    expect(meterRate(blocked.machines[0]!.starved, blocked.tick)).toBe(0);
+  });
+
   it('block when nothing takes the output', () => {
     const world = run(
       [source(0, 1, N, 'iron-plate'), inserter(1, 1, E, 'fast-inserter'), machine(2, 0, 'assembling-machine-2', 'iron-gear-wheel')],

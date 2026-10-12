@@ -46,9 +46,6 @@ export const MAX_ROW = 40;
  */
 const BELT_PICKUP_FACTOR = 0.8;
 
-/** Tried slowest first; the first that keeps up is used. */
-const INSERTER_LADDER = ['inserter', 'fast-inserter', 'bulk-inserter'] as const;
-
 export type RowLayout =
   | {
       ok: true;
@@ -59,6 +56,10 @@ export type RowLayout =
       blocks: number;
       /** Things the simulation is likely to show, said up front. */
       notes: string[];
+      /** The source standing in for each solid ingredient, to be swapped for a real belt. */
+      feeds: { itemId: string; sourceId: string }[];
+      /** The sink at the end of the output belt, when there is one product to chain on. */
+      output: { itemId: string; sinkId: string } | null;
     }
   | { ok: false; reason: string };
 
@@ -69,20 +70,28 @@ export function inserterRate(inserterId: string, hands: HandSize): number {
   return (handSize(spec, hands) * 60 * BELT_PICKUP_FACTOR) / (2 * spec.swingTicks);
 }
 
-/** The slowest inserter, and how many of it, to move `perSec`. */
+/**
+ * The inserters to move `perSec`: one basic, else one fast, else several fast
+ * side by side, else bulk. Bulk inserters come last on purpose — off a belt
+ * they wait to fill a hand of twelve while the machine they feed runs dry,
+ * which is why players feed from belts with two fast inserters instead.
+ */
 export function insertersFor(
   perSec: number,
   hands: HandSize,
   slots: number,
 ): { inserterId: string; count: number; enough: boolean } {
-  for (const inserterId of INSERTER_LADDER) {
+  const room = Math.max(1, slots);
+  for (const inserterId of ['inserter', 'fast-inserter'] as const) {
     if (inserterRate(inserterId, hands) >= perSec) return { inserterId, count: 1, enough: true };
   }
-  // Nothing keeps up alone: as many of the fastest as there is room for.
-  const fastest = INSERTER_LADDER.at(-1)!;
-  const needed = Math.ceil(perSec / inserterRate(fastest, hands));
-  const count = Math.max(1, Math.min(needed, slots));
-  return { inserterId: fastest, count, enough: count >= needed };
+  const fast = inserterRate('fast-inserter', hands);
+  const fastNeeded = Math.ceil(perSec / fast);
+  if (fastNeeded <= room) return { inserterId: 'fast-inserter', count: fastNeeded, enough: true };
+  const bulk = inserterRate('bulk-inserter', hands);
+  const bulkNeeded = Math.ceil(perSec / bulk);
+  const count = Math.min(bulkNeeded, room);
+  return { inserterId: 'bulk-inserter', count, enough: count >= bulkNeeded };
 }
 
 interface Options {
@@ -91,6 +100,11 @@ interface Options {
   hands: HandSize;
   /** Where the first machine's top-left corner goes. */
   origin: { x: number; y: number };
+  /**
+   * The whole node in one row instead of one of its blocks: what laying out
+   * a whole plan wants, so rows can feed one another at the planned rates.
+   */
+  whole?: boolean;
 }
 
 export function layoutRow(
@@ -113,7 +127,7 @@ export function layoutRow(
   }
 
   const solved = result?.status === 'ok' ? result.nodes[node.id] : undefined;
-  const blocks = Math.max(1, solved?.blocks ?? 1);
+  const blocks = options.whole ? 1 : Math.max(1, solved?.blocks ?? 1);
   const machines = Math.max(1, Math.ceil((solved?.machinesCeil ?? 1) / blocks - 1e-9));
   if (machines > MAX_ROW) {
     return {
@@ -150,9 +164,12 @@ export function layoutRow(
   const width = machines * w;
   const { x: ox, y: oy } = options.origin;
   const entities: BuildEntity[] = [];
-  const add = (entity: Unplaced): void => {
-    entities.push({ ...entity, id: newId('b') } as BuildEntity);
+  const add = (entity: Unplaced): string => {
+    const id = newId('b');
+    entities.push({ ...entity, id } as BuildEntity);
+    return id;
   };
+  const feeds: { itemId: string; sourceId: string }[] = [];
 
   // Belts: the plan's tier, or the slowest that carries the busiest lane.
   // Two ingredients share a belt a lane each, so each gets half of it; one
@@ -185,9 +202,12 @@ export function layoutRow(
         `Split the node into ${split} blocks, or use a faster belt.`,
     );
   }
-  const belt = (x: number, y: number, dir: Dir): void => add({ kind: 'belt', x, y, dir, beltId });
-  const source = (x: number, y: number, dir: Dir, itemId: string): void =>
-    add({ kind: 'source', x, y, dir, itemId, perSec: null });
+  const belt = (x: number, y: number, dir: Dir): void => {
+    add({ kind: 'belt', x, y, dir, beltId });
+  };
+  const source = (x: number, y: number, dir: Dir, itemId: string): void => {
+    feeds.push({ itemId, sourceId: add({ kind: 'source', x, y, dir, itemId, perSec: null }) });
+  };
 
   // First belt, eastbound along y = -2, fed from the west end.
   const y1 = oy - 2;
@@ -205,11 +225,13 @@ export function layoutRow(
   }
 
   // Second belt, westbound along y = -3, fed from the east end so its
-  // sources stay clear of the first belt's.
+  // sources stay clear of the first belt's. It stops one tile short of the
+  // row's west end: one further and its dead end would point straight at
+  // the first belt's north feed.
   const y2 = oy - 3;
   if (secondBelt.length > 0) {
     const east = ox + width + 1;
-    for (let x = ox; x <= east; x += 1) belt(x, y2, W);
+    for (let x = ox + 1; x <= east; x += 1) belt(x, y2, W);
     if (secondBelt.length === 1) {
       source(east + 1, y2, W, secondBelt[0]!.itemId);
     } else {
@@ -252,25 +274,32 @@ export function layoutRow(
   }
 
   // Output belt along the bottom, to a sink that knows what the plan expects.
+  let output: { itemId: string; sinkId: string } | null = null;
   if (products.length > 0) {
     const yo = oy + h + 1;
     for (let x = ox; x < ox + width; x += 1) belt(x, yo, E);
     const main = products[0]!;
     const planned = result?.status === 'ok' ? result.ports[portKey(node.id, 'out', main.itemId)]?.produced : undefined;
-    add({
+    const sinkId = add({
       kind: 'sink',
       x: ox + width,
       y: yo,
       dir: N,
       target: planned !== undefined && planned > 0 ? { itemId: main.itemId, perSec: planned / blocks } : null,
     });
+    // A belt carrying two products cannot feed one ingredient lane.
+    if (products.length === 1) output = { itemId: main.itemId, sinkId };
   }
 
-  return { ok: true, entities, machineId, machines, blocks, notes };
+  return { ok: true, entities, machineId, machines, blocks, notes, feeds, output };
 }
 
-/** Where a new row goes: clear of everything already built, to its right. */
-export function rowOrigin(existing: readonly BuildEntity[]): { x: number; y: number } {
+/**
+ * Where a new row goes: clear of everything already built, to its right.
+ * `margin` is the room left on the left for feeds and, for a whole plan, the
+ * belts that run round the outside.
+ */
+export function rowOrigin(existing: readonly BuildEntity[], margin = 5): { x: number; y: number } {
   if (existing.length === 0) return { x: 0, y: 0 };
   let maxX = Number.NEGATIVE_INFINITY;
   let minY = Number.POSITIVE_INFINITY;
@@ -280,5 +309,5 @@ export function rowOrigin(existing: readonly BuildEntity[]): { x: number; y: num
     minY = Math.min(minY, entity.y);
   }
   // Room on the left for the feeding sources, and the second belt's row above.
-  return { x: maxX + 5, y: minY + 4 };
+  return { x: maxX + margin, y: minY + 4 };
 }

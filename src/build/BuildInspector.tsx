@@ -9,7 +9,7 @@ import { NumberField } from '../ui/NumberField.tsx';
 import { PickerRow } from '../ui/PickerRow.tsx';
 import { Sprite } from '../ui/Sprite.tsx';
 import { percent, rate } from '../ui/format.ts';
-import { KEEPING_UP } from './draw.ts';
+import { STARVED_LIMIT, starvedShare } from './draw.ts';
 import { INSERTER_SPECS, buildableMachinesFor, undergroundReach } from './entities.ts';
 import type { HandSize } from './types.ts';
 import { entityName, formatClock } from './names.ts';
@@ -175,12 +175,13 @@ function Report({ world, result }: { world: World; result: SolveResult | null })
   }
   for (const [itemId, perSec] of targets) planned.set(itemId, perSec);
 
-  const machines = new Map<string, { count: number; working: number }>();
+  const machines = new Map<string, { count: number; working: number; starved: number }>();
   for (const machine of world.machines) {
     if (!machine.recipe) continue;
-    const entry = machines.get(machine.recipe.id) ?? { count: 0, working: 0 };
+    const entry = machines.get(machine.recipe.id) ?? { count: 0, working: 0, starved: 0 };
     entry.count += 1;
     entry.working += meterRate(machine.working, tick) / 60;
+    entry.starved += starvedShare(machine, tick);
     machines.set(machine.recipe.id, entry);
   }
 
@@ -192,8 +193,9 @@ function Report({ world, result }: { world: World; result: SolveResult | null })
       {empty ? (
         <section className={styles.section}>
           <p className={styles.hint}>
-            Pick a tool above and click the grid to build. Sources supply items, sinks count what
-            arrives, and Play runs it.
+            Lay out plan builds the whole graph here, joined by belts. Or pick a tool above and
+            click the grid to build by hand. Sources supply items, sinks count what arrives, and
+            Play runs it.
           </p>
         </section>
       ) : null}
@@ -257,12 +259,16 @@ function Report({ world, result }: { world: World; result: SolveResult | null })
           {[...machines.entries()].map(([recipeId, entry]) => {
             const recipe = index.recipes.get(recipeId);
             const share = entry.working / entry.count;
+            const starving = entry.starved / entry.count > STARVED_LIMIT;
             return (
               <div className={styles.row} key={recipeId}>
                 {recipe ? <Sprite icon={recipe.icon} size={16} /> : null}
                 <span className={own.itemName}>{recipe?.name ?? recipeId}</span>
                 <span className={`mono ${own.detail}`}>× {entry.count}</span>
-                <span className={`mono ${tick > 0 && share < KEEPING_UP ? styles.valueWarn : own.rate}`}>
+                <span
+                  className={`mono ${starving ? styles.valueWarn : own.rate}`}
+                  title={starving ? 'Waiting for ingredients' : share < 0.95 ? 'Making more than is taken' : undefined}
+                >
                   {tick > 0 ? percent(share) : '—'}
                 </span>
               </div>
@@ -561,7 +567,7 @@ function MachineSections({
             </span>
           </Row>
           <Row label="Crafting">
-            <span className={`mono ${tick > 0 && share < KEEPING_UP ? styles.valueWarn : ''}`}>
+            <span className={`mono ${starvedShare(machine, tick) > STARVED_LIMIT ? styles.valueWarn : ''}`}>
               {tick > 0 ? percent(share) : '—'}
             </span>
           </Row>

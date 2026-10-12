@@ -911,3 +911,43 @@ assembler 3s, and the row ran at 2.5/s with machines at 6 %. That is correct: ca
 one lane of a yellow belt, 7.5/s, which is 2.5 circuits. The warning now says that in
 those words — which item, which lane, what it carries — and how many blocks would fit.
 
+### Lay out plan
+
+`build/wholePlan.ts` lays every recipe node out as a whole-node row, stacks the rows in
+production order with four empty rows between, and replaces the source at a consumer's
+feed and the sink at a producer's output with a belt routed by `build/route.ts`.
+
+- **Routing is A\* over (tile, direction of travel)**, with a small cost per turn so
+  straight runs win ties, and a tunnel move: the current tile becomes an underground
+  entrance and an exit lands up to the tier's reach ahead, never with a same-tier
+  underground between them. A tunnel costs its span plus four, so it is used to cross
+  something, not to shave a tile — the test that expected a route *round* a one-tile
+  wall was wrong, because under it is shorter.
+- **It never puts a belt in front of a belt that dead-ends.** That empty tile is where
+  the dead end would start side-loading, so a route through it would quietly take
+  items off another line. Every occupied tile and every such tile is off limits.
+- **One belt per output and per feed.** A producer feeding two consumers routes its
+  first link and stubs the rest with a source, and the toast counts them. Splitting
+  with splitters is the obvious next step.
+- **Rows had a leak to fix first.** With three or four ingredients the second belt
+  dead-ended into the tile where the first belt's north feed sits. Harmless while that
+  was a source; a routed belt there would have been side-loaded with the wrong items.
+  The second belt now stops a tile short.
+
+The test that mattered most was the simplest: cable into circuits, one circuit assembler
+at exactly 100 %. It delivered 94 % of plan. Probing the world found two causes:
+
+1. **Inserters only dropped at the exact middle of a tile.** A second inserter on a busy
+   lane waited out most of the passing gaps, so its machine backed up. Inserters now drop
+   into any gap within 12 units of the middle, nearest first.
+2. **Bulk inserters starve machines off a belt.** One bulk inserter fed the circuit
+   machine; it waits to collect 12 items while the machine's buffer of 9 cable runs out.
+   That is true to the game, which is why players feed from belts with two fast
+   inserters. Rows now do the same: one basic, one fast, several fast, and bulk only
+   when nothing else fits.
+
+**Starved is not idle.** A whole plan rounds every row up, so most rows make more than
+the next one takes and sit idle with their output full. Colouring by share of time
+crafting painted those red. Machines now keep a separate meter of ticks spent waiting
+for an ingredient, and red means more than 5 % of the window starved.
+
