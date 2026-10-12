@@ -6,8 +6,9 @@
  *
  * Positions are hand-placed so a screenshot of a given fixture is stable.
  */
-import { encodeToHash } from '../src/graph/serialize.ts';
+import { encodeToHash, type GraphDocument } from '../src/graph/serialize.ts';
 import type { Blocks, FlowEdge, Graph, GraphNode, Transport } from '../src/graph/types.ts';
+import type { BuildEntity, Dir } from '../src/build/types.ts';
 
 type NodeSpec = { node: GraphNode; at: { x: number; y: number } };
 
@@ -80,7 +81,7 @@ function build(specs: NodeSpec[], edges: FlowEdge[]): Graph {
   };
 }
 
-const FIXTURES: Record<string, { projectName: string; graph: Graph }> = {
+const FIXTURES: Record<string, GraphDocument> = {
   /** Four nodes: two feeders, the circuit assembler, and a fixed sink. */
   'green-circuits': {
     projectName: 'Green circuits',
@@ -257,6 +258,65 @@ function overBelt(cableBlocks?: Blocks): { projectName: string; graph: Graph } {
     ),
   };
 }
+
+/**
+ * A plan with a build to test: one cable assembler feeding one circuit
+ * assembler by direct insertion. The plan asks for 1.5 circuits a second; one
+ * cable assembler only keeps the circuit one two-thirds busy, so the report
+ * shows 1/s against the plan's 1.5 and both bars go to --warn. Adding a
+ * second cable assembler is the fix it is there to prompt.
+ */
+function circuitCell(): GraphDocument {
+  const E: Dir = 1;
+  const S: Dir = 2;
+  const W: Dir = 3;
+  const belt = (id: string, x: number, y: number, dir: Dir): BuildEntity => ({
+    id, kind: 'belt', x, y, dir, beltId: 'transport-belt',
+  });
+  const inserter = (id: string, x: number, y: number, dir: Dir): BuildEntity => ({
+    id, kind: 'inserter', x, y, dir, inserterId: 'fast-inserter',
+  });
+  const entities: BuildEntity[] = [
+    { id: 'copper', kind: 'source', x: -2, y: -2, dir: E, itemId: 'copper-plate', perSec: null },
+    belt('cb1', -1, -2, E),
+    belt('cb2', 0, -2, E),
+    belt('cb3', 1, -2, E),
+    belt('cb4', 2, -2, E),
+    inserter('ci', 1, -1, S),
+    { id: 'cable', kind: 'machine', x: 0, y: 0, dir: 0, machineId: 'assembling-machine-2', recipeId: 'copper-cable' },
+    inserter('direct', 3, 1, E),
+    { id: 'iron', kind: 'source', x: 8, y: -2, dir: W, itemId: 'iron-plate', perSec: null },
+    belt('ib1', 7, -2, W),
+    belt('ib2', 6, -2, W),
+    belt('ib3', 5, -2, W),
+    belt('ib4', 4, -2, W),
+    inserter('ii', 5, -1, S),
+    { id: 'circuit', kind: 'machine', x: 4, y: 0, dir: 0, machineId: 'assembling-machine-2', recipeId: 'electronic-circuit' },
+    inserter('out', 5, 3, S),
+    { id: 'sink', kind: 'sink', x: 5, y: 4, dir: 0 },
+  ];
+  return {
+    projectName: 'Circuit cell',
+    graph: build(
+      [
+        source('cu', 'copper-plate', { x: -380, y: 190 }),
+        source('fe', 'iron-plate', { x: 20, y: 40 }),
+        recipe('cable', 'copper-cable', 'assembling-machine-2', { x: 20, y: 190 }),
+        recipe('circuit', 'electronic-circuit', 'assembling-machine-2', { x: 440, y: 110 }),
+        sink('out', 'electronic-circuit', { x: 860, y: 130 }, 1.5),
+      ],
+      [
+        link('cu', 'cable', 'copper-plate'),
+        link('fe', 'circuit', 'iron-plate'),
+        link('cable', 'circuit', 'copper-cable'),
+        link('circuit', 'out', 'electronic-circuit'),
+      ],
+    ),
+    build: { hands: 'researched', entities },
+  };
+}
+
+FIXTURES['circuit-cell'] = circuitCell();
 
 const name = process.argv[2] ?? 'green-circuits';
 const fixture = FIXTURES[name];

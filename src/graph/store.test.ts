@@ -361,3 +361,58 @@ describe('switching plans', () => {
     expect(state().plans.map((p) => p.name)).toEqual(['A']);
   });
 });
+
+describe('the build', () => {
+  beforeEach(reset);
+
+  const belt = (id: string, x: number, dir: 0 | 1 | 2 | 3 = 1) =>
+    ({ id, kind: 'belt', x, y: 0, dir, beltId: 'transport-belt' }) as const;
+
+  it('undoes a dragged line in one step', () => {
+    state().beginBatch();
+    for (let x = 0; x < 5; x += 1) state().placeEntities([belt(`b${x}`, x)]);
+    state().endBatch();
+    expect(state().build.entities).toHaveLength(5);
+    state().undo();
+    expect(state().build.entities).toHaveLength(0);
+    state().redo();
+    expect(state().build.entities).toHaveLength(5);
+  });
+
+  it('records nothing when a placement is refused', () => {
+    state().placeEntities([belt('a', 0)]);
+    const depth = state().history.past.length;
+    expect(state().placeEntities([{ ...belt('b', 0), kind: 'sink' } as never])).toEqual([null]);
+    expect(state().history.past.length).toBe(depth);
+  });
+
+  it('shares one undo stack with the graph', () => {
+    addCircuit();
+    state().placeEntities([belt('a', 0)]);
+    state().undo();
+    expect(state().build.entities).toHaveLength(0);
+    expect(state().graph.nodes).toHaveLength(1);
+  });
+
+  it('drops a removed entity from the selection, and an undone one', () => {
+    state().placeEntities([belt('a', 0), belt('b', 1)]);
+    state().setBuildSelection(['a', 'b']);
+    state().removeEntities(['a']);
+    expect(state().buildSelection).toEqual(['b']);
+    state().placeEntities([belt('c', 2)]);
+    state().setBuildSelection(['c']);
+    state().undo();
+    expect(state().buildSelection).toEqual([]);
+  });
+
+  it('switches with the plan', () => {
+    state().openPlan('a', {
+      graph: emptyGraph('2x1'),
+      projectName: 'A',
+      build: { hands: 'base', entities: [belt('x', 0)] },
+    });
+    expect(state().build.entities).toHaveLength(1);
+    state().openPlan('b', { graph: emptyGraph('2x1'), projectName: 'B' });
+    expect(state().build).toEqual({ hands: 'researched', entities: [] });
+  });
+});

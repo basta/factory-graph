@@ -20,7 +20,12 @@ import {
 } from './icons.tsx';
 import styles from './Header.module.css';
 
+/** The two ways of looking at a plan: its ratios, and a layout to test. */
+export type View = 'graph' | 'build';
+
 interface Props {
+  view: View;
+  onViewChange: (view: View) => void;
   projectName: string;
   onProjectNameChange: (name: string) => void;
   plans: PlanMeta[];
@@ -75,6 +80,21 @@ export function Header(props: Props): JSX.Element {
         onNew={props.onNewPlan}
         onDelete={props.onDeletePlan}
       />
+      <span className={styles.views} role="tablist" aria-label="View">
+        {(['graph', 'build'] as View[]).map((view) => (
+          <button
+            key={view}
+            type="button"
+            role="tab"
+            aria-selected={props.view === view}
+            className={[styles.viewTab, props.view === view ? styles.viewOn : ''].join(' ')}
+            title={view === 'graph' ? 'The ratio graph' : 'Lay the plan out on a grid and simulate it'}
+            onClick={() => props.onViewChange(view)}
+          >
+            {view === 'graph' ? 'Graph' : 'Build'}
+          </button>
+        ))}
+      </span>
       <span className={styles.dataSet}>{data.name}</span>
       {CHANNEL === 'staging' ? (
         // Staging and the live site look identical otherwise, and editing the
@@ -137,6 +157,7 @@ export function Header(props: Props): JSX.Element {
           <IconButton
             label="Auto-layout (Ctrl L)"
             onClick={props.onLayout}
+            disabled={props.view !== 'graph'}
             className={styles.wide}
           >
             <LayoutIcon />

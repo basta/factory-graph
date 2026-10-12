@@ -131,6 +131,51 @@ left-to-right in `--brass`, switching the bar *and* the label *and* the path to 
 above 100 %. When blocks put several belts side by side the label adds a `--ink-muted`
 `×6` after the rate, and the bar measures one of those belts, not all of them as one.
 
+## Build view
+
+A plan's second view, picked from a `Graph | Build` control next to the plan name. It
+is a tile grid rather than a node canvas, because what it answers is physical: does
+this layout actually move the items the graph says it should.
+
+```
++--------------------------------------------------------------------------------+
+| header, unchanged, with Graph | Build                                          |  44px
++--------------------------------------------------------+-----------------------+
+| [>][belt][ins][asm][src][snk][chest][x] | variants | R  [o][>][>|] 1x 4x 16x 0:42 |  36px
++--------------------------------------------------------+-----------------------+
+|  . . . . . . . . . . . . . . . . . . . . . . . . . .  |  Build                |
+|  . [Cu]>>>>>>>>>> . . . . . <<<<<<<<<<[Fe] . . . . . .  |  Clock          1:20  |
+|  . . . . . . [i] . . . . . . . [i] . . . . . . . . . .  |  Output               |
+|  . . . +-------+ [i] +-------+ . . . . . . . . . . . .  |   [ic] Circuit  1.0/s |
+|  . . . | cable |---->| circ. | . . . . . . . . . . . .  |  Machines             |
+|  . . . +=======+ . . +====---+ . . . . . . . . . . . .  |   [ic] Cable    100 % |
++--------------------------------------------------------+-----------------------+
+```
+
+- **Toolbar, 36px**, `--panel`, one hairline below. Tools as 28px buttons, game
+  sprites where the game has the thing (belt, inserter, machine, chest) and line glyphs
+  where it does not (select, source, sink, remove). The active tool is the only copper in
+  the strip. The active tool's options follow: belt tiers, inserter types, the machine
+  and recipe, the source item, and a rotation arrow. The simulation controls and the mono
+  clock sit at the right end behind a hairline.
+- **Grid**: same `--bg-canvas` and corner dots as the graph canvas, one dot per tile.
+  Entities are drawn the way nodes are: `--panel` blocks, `--line` borders, 3px of
+  nothing, no shadows. Belts show one chevron per tier (one for yellow, four for turbo)
+  instead of the game's colours, because red and blue would collide with `--warn` and
+  `--fluid`. Items are their sprites, on the lane they are actually on, following the
+  arc round a curve.
+- **Machines** carry two bars along the bottom: a thin `--ink-muted` one for the craft
+  in progress, and under it the share of the last 30 s spent crafting, `--brass` when it
+  is at 95 % or more and `--warn` when it is not keeping up. That is the build view's
+  version of an unbalanced port, and the only place it uses `--warn` on the grid.
+- **Inspector**: the same 320px rail with hairline sections, always open. With nothing
+  selected it is the test report — output over the last 30 s with the plan's figure
+  beside it, input, and each recipe's share of time crafting. With an entity selected it
+  is that entity's settings and live state.
+- **Keys follow the game** where it has one: R rotates, Q picks up the tool for what is
+  under the pointer, right-click removes, a dragged belt follows the pointer round
+  corners. Ctrl C / Ctrl V copy a selection as a stamp, and R turns the stamp.
+
 ## Type
 
 IBM Plex Sans / IBM Plex Mono, self-hosted woff2, `font-display: swap`, with a real

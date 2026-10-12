@@ -28,7 +28,9 @@ import { autoLayout } from './graph/layout.ts';
 import { GraphParseError, type GraphDocument } from './graph/serialize.ts';
 import { Canvas, type DropSearch } from './canvas/Canvas.tsx';
 import { nodeShape } from './canvas/geometry.ts';
-import { Header } from './ui/Header.tsx';
+import { Header, type View } from './ui/Header.tsx';
+import { BuildView } from './build/BuildView.tsx';
+import { useBuildWorld } from './build/useSimulation.ts';
 import { Inspector } from './ui/Inspector.tsx';
 import { Search, type SearchChoice, type SearchIntent } from './ui/Search.tsx';
 import { ShortcutsOverlay } from './ui/ShortcutsOverlay.tsx';
@@ -111,6 +113,7 @@ function Editor({ index }: { index: GameIndex }): JSX.Element {
   const [helpOpen, setHelpOpen] = useState(false);
   const [search, setSearch] = useState<SearchState>(CLOSED);
   const [plansOpen, setPlansOpen] = useState(false);
+  const [view, setView] = useState<View>('graph');
   const [toast, setToast] = useState<{ message: string; action?: ToastAction } | null>(null);
   const say = useCallback((message: string, action?: ToastAction) => {
     // Returning the same object makes React bail out, so a message repeated
@@ -127,6 +130,7 @@ function Editor({ index }: { index: GameIndex }): JSX.Element {
   const activeId = useGraphStore((state) => state.activeId);
   const plans = useGraphStore((state) => state.plans);
   const projectName = useGraphStore((state) => state.projectName);
+  const build = useGraphStore((state) => state.build);
   const selection = useGraphStore((state) => state.selection);
   const selectedEdges = useGraphStore((state) => state.selectedEdges);
   const store = useGraphStore;
@@ -138,6 +142,9 @@ function Editor({ index }: { index: GameIndex }): JSX.Element {
   // positions — from re-solving on every pointer move.
   const { nodes, edges } = graph;
   const result = useMemo(() => solve({ nodes, edges }, index), [nodes, edges, index]);
+  // The build's simulation lives here rather than in the build view, so it
+  // is still where it was left after a look at the graph.
+  const buildWorld = useBuildWorld(build, index, activeId);
 
   // --- autosave ------------------------------------------------------------
   // The document is already in the store by the time this component mounts.
@@ -170,8 +177,8 @@ function Editor({ index }: { index: GameIndex }): JSX.Element {
 
   useEffect(() => {
     if (activeId === null) return;
-    autosave.schedule({ id: activeId, doc: { graph, projectName } });
-  }, [activeId, autosave, graph, projectName]);
+    autosave.schedule({ id: activeId, doc: { graph, projectName, build } });
+  }, [activeId, autosave, build, graph, projectName]);
 
   // --- plans ---------------------------------------------------------------
   /** Switches the canvas to `doc`, which must already be saved under `id`. */
@@ -360,7 +367,11 @@ function Editor({ index }: { index: GameIndex }): JSX.Element {
   // --- project actions -----------------------------------------------------
   const onShare = useCallback(() => {
     const actions = store.getState();
-    const url = shareUrl({ graph: actions.graph, projectName: actions.projectName });
+    const url = shareUrl({
+      graph: actions.graph,
+      projectName: actions.projectName,
+      build: actions.build,
+    });
     navigator.clipboard
       .writeText(url)
       .then(() => say('Link copied'))
@@ -371,7 +382,11 @@ function Editor({ index }: { index: GameIndex }): JSX.Element {
 
   const onExport = useCallback(() => {
     const actions = store.getState();
-    exportDocument({ graph: actions.graph, projectName: actions.projectName });
+    exportDocument({
+      graph: actions.graph,
+      projectName: actions.projectName,
+      build: actions.build,
+    });
   }, [store]);
 
   const onImport = useCallback(() => {
@@ -412,7 +427,8 @@ function Editor({ index }: { index: GameIndex }): JSX.Element {
         if (search.open) setSearch(CLOSED);
         else if (plansOpen) onPlansOpenChange(false);
         else if (helpOpen) setHelpOpen(false);
-        else actions.setSelection([], []);
+        // The build view has its own idea of what Escape clears.
+        else if (view === 'graph') actions.setSelection([], []);
         return;
       }
 
@@ -425,10 +441,30 @@ function Editor({ index }: { index: GameIndex }): JSX.Element {
         if (event.key.toLowerCase() === 's') onShare();
         else if (event.key.toLowerCase() === 'e') onExport();
         else if (event.key.toLowerCase() === 'i') onImport();
-        else onLayout();
+        else if (view === 'graph') onLayout();
         return;
       }
       if (typing) return;
+
+      // The build view handles its own keys; only the document-wide ones
+      // are shared — help, the plan list, and the one undo stack.
+      if (view === 'build') {
+        if (event.key === '?') {
+          event.preventDefault();
+          setHelpOpen((open) => !open);
+        } else if (control && event.key.toLowerCase() === 'p') {
+          event.preventDefault();
+          onPlansOpenChange(!plansOpen);
+        } else if (control && event.key.toLowerCase() === 'z') {
+          event.preventDefault();
+          if (event.shiftKey) actions.redo();
+          else actions.undo();
+        } else if (control && event.key.toLowerCase() === 'y') {
+          event.preventDefault();
+          actions.redo();
+        }
+        return;
+      }
 
       if (event.key === '?') {
         event.preventDefault();
@@ -503,6 +539,7 @@ function Editor({ index }: { index: GameIndex }): JSX.Element {
     plansOpen,
     search.open,
     store,
+    view,
   ]);
 
   const past = useGraphStore((state) => state.history.past.length);
@@ -511,6 +548,8 @@ function Editor({ index }: { index: GameIndex }): JSX.Element {
   return (
     <div className={styles.app}>
       <Header
+        view={view}
+        onViewChange={setView}
         projectName={projectName}
         onProjectNameChange={store.getState().setProjectName}
         plans={plans}
@@ -532,26 +571,37 @@ function Editor({ index }: { index: GameIndex }): JSX.Element {
         onHelp={() => setHelpOpen(true)}
       />
       <div className={styles.body}>
-        <SolveProvider value={result}>
-          <Canvas
-            empty={graph.nodes.length === 0}
-            onAddAt={(screen) => openSearchAtScreen(screen, { kind: 'anything' }, null)}
-            onDropSearch={onDropSearch}
+        {view === 'graph' ? (
+          <SolveProvider value={result}>
+            <Canvas
+              empty={graph.nodes.length === 0}
+              onAddAt={(screen) => openSearchAtScreen(screen, { kind: 'anything' }, null)}
+              onDropSearch={onDropSearch}
+            />
+            <Inspector
+              selection={selection}
+              selectedEdges={selectedEdges}
+              onClose={() => store.getState().setSelection([], [])}
+            />
+          </SolveProvider>
+        ) : (
+          <BuildView
+            buildWorld={buildWorld}
+            result={result}
+            keysBlocked={helpOpen || plansOpen}
+            say={say}
           />
-          <Inspector
-            selection={selection}
-            selectedEdges={selectedEdges}
-            onClose={() => store.getState().setSelection([], [])}
-          />
-        </SolveProvider>
+        )}
       </div>
-      <Search
-        open={search.open}
-        intent={search.intent}
-        onClose={() => setSearch(CLOSED)}
-        onChoose={onChoose}
-      />
-      <ShortcutsOverlay open={helpOpen} onClose={() => setHelpOpen(false)} />
+      {view === 'graph' ? (
+        <Search
+          open={search.open}
+          intent={search.intent}
+          onClose={() => setSearch(CLOSED)}
+          onChoose={onChoose}
+        />
+      ) : null}
+      <ShortcutsOverlay open={helpOpen} view={view} onClose={() => setHelpOpen(false)} />
       <Toast
         message={toast?.message ?? null}
         action={toast?.action ?? null}
