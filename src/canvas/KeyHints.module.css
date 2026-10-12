@@ -1,0 +1,100 @@
+/* Bottom centre, between the minimap and the zoom controls, framed like them.
+   One line that clips rather than wraps, so it never grows into the canvas. */
+.hints {
+  position: absolute;
+  bottom: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  max-width: calc(100% - 400px);
+  height: 30px;
+  padding: 0 4px 0 10px;
+  white-space: nowrap;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+
+/* Only the hints clip, so the close button is always reachable. */
+.list {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.hint {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 3px;
+}
+
+.key {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  padding: 0 5px;
+  border: 1px solid var(--line);
+  border-radius: 2px;
+  color: var(--ink);
+}
+
+.then {
+  color: var(--ink);
+}
+
+.label {
+  margin-left: 3px;
+  color: var(--ink-muted);
+}
+
+.hide {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  margin-left: auto;
+  border-radius: 2px;
+}
+
+.hide:hover {
+  background: var(--panel-raised);
+}
+
+/* An x from two hairlines, the weight of the plan bar's plus. */
+.cross {
+  position: relative;
+  width: 9px;
+  height: 9px;
+}
+
+.cross::before,
+.cross::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: var(--ink-muted);
+}
+
+.cross::before {
+  transform: rotate(45deg);
+}
+
+.cross::after {
+  transform: rotate(-45deg);
+}
+
+/* On a phone the inspector is a bottom sheet and there is no keyboard. */
+@media (max-width: 720px) {
+  .hints {
+    display: none;
+  }
+}

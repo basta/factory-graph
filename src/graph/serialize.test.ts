@@ -135,6 +135,23 @@ describe('JSON round trip', () => {
     expect(() => parseDocument(JSON.stringify(broken))).toThrow(GraphParseError);
   });
 
+  it('keeps plan settings, and loads a plan saved before they existed', () => {
+    const withSettings: GraphDocument = {
+      ...kitchenSink,
+      graph: {
+        ...kitchenSink.graph,
+        settings: {
+          beltId: 'fast-transport-belt',
+          machines: ['assembling-machine-3', 'electric-furnace'],
+          bus: ['iron-plate'],
+          unit: 'min',
+        },
+      },
+    };
+    expect(parseDocument(serializeDocument(withSettings))).toEqual(withSettings);
+    expect(parseDocument(serializeDocument(kitchenSink)).graph).not.toHaveProperty('settings');
+  });
+
   it('loads a plan saved before blocks existed', () => {
     const parsed = parseDocument(serializeDocument(kitchenSink));
     const plain = parsed.graph.nodes.find((node) => node.id === 'r3');
@@ -212,5 +229,47 @@ describe('URL hash round trip', () => {
     expect(decodeFromHash(hash)).toEqual(big);
     // Comfortably inside what browsers accept in a fragment.
     expect(hash.length).toBeLessThan(8000);
+  });
+});
+
+describe('builds', () => {
+  const withBuild: GraphDocument = {
+    ...doc([]),
+    build: {
+      hands: 'base',
+      entities: [
+        { id: 'b1', kind: 'belt', x: 0, y: 0, dir: 1, beltId: 'transport-belt' },
+        { id: 'b2', kind: 'inserter', x: 1, y: 1, dir: 2, inserterId: 'fast-inserter' },
+        { id: 'b3', kind: 'machine', x: 0, y: 2, dir: 0, machineId: 'assembling-machine-2', recipeId: null },
+        { id: 'b4', kind: 'source', x: -1, y: 0, dir: 1, itemId: 'iron-plate', perSec: 7.5 },
+        { id: 'b5', kind: 'sink', x: 5, y: 0, dir: 0 },
+        { id: 'b6', kind: 'chest', x: 4, y: 4, dir: 0 },
+        { id: 'b7', kind: 'underground', x: 8, y: 0, dir: 1, beltId: 'fast-transport-belt', io: 'in' },
+        {
+          id: 'b8', kind: 'splitter', x: 9, y: 2, dir: 2, beltId: 'transport-belt',
+          inputPriority: 'left', outputPriority: 'right', filter: 'iron-plate',
+        },
+        { id: 'b9', kind: 'sink', x: 9, y: 4, dir: 0, target: { itemId: 'iron-plate', perSec: 7.5 } },
+      ],
+    },
+  };
+
+  it('round-trips one of every entity through a link', () => {
+    expect(decodeFromHash(encodeToHash(withBuild))).toEqual(withBuild);
+  });
+
+  it('loads a document saved before builds existed', () => {
+    expect(parseDocument(serializeDocument(doc([]))).build).toBeUndefined();
+  });
+
+  it('leaves an untouched build out of the saved document', () => {
+    const empty = { ...doc([]), build: { hands: 'researched' as const, entities: [] } };
+    expect(serializeDocument(empty)).toBe(serializeDocument(doc([])));
+  });
+
+  it('rejects an entity at a fractional tile', () => {
+    const bad = JSON.parse(serializeDocument(withBuild));
+    bad.build.entities[0].x = 0.5;
+    expect(() => parseDocument(JSON.stringify(bad))).toThrow(GraphParseError);
   });
 });

@@ -118,6 +118,11 @@ header band and no handles, `--ink-muted` text.
   bottom-left (panel-coloured nodes on a canvas-coloured field), custom zoom controls
   bottom-right. React Flow's attribution, default handles, default edges, default
   controls and default minimap styling are all replaced.
+- **Plan bar**, top-left of the canvas, framed like the zoom controls: the belt new
+  connections start on, the assembler and furnace tier new nodes get, `/s` or `/min`,
+  and the bus items Expand stops at. Every option is its game sprite at 16px; the
+  chosen one sits on `--panel-raised` and the rest recede to 45 % opacity, so the eye
+  finds the choice without a colour being spent on it. Groups split by hairlines.
 - **Empty state**: one line, centred, `--ink-muted`: `Double-click the canvas or press
   Ctrl K to add a recipe.` Nothing else — no illustration, no card of suggestions.
 
@@ -130,6 +135,77 @@ a transport is set a 2px saturation bar sits directly under the label, filling
 left-to-right in `--brass`, switching the bar *and* the label *and* the path to `--warn`
 above 100 %. When blocks put several belts side by side the label adds a `--ink-muted`
 `×6` after the rate, and the bar measures one of those belts, not all of them as one.
+When one port feeds several others — or several feed one — the connections are drawn
+as a manifold: one spine 36px from the shared port, a 3px junction dot where the
+branches leave it, and each branch's label on the run that belongs only to it, beside
+its own consumer (or producer). Smoothstep would stack every label on one shared line.
+Routes are decided for all connections together: two spines never share a line (a
+second manifold in the same gap takes the next lane, 14px further out), no two flows
+share a stretch of line, and a label that would land on another slides along its run
+or, failing that, sits just above or below its line rather than across it.
+
+The label leads with a 16px sprite of the belt, pipe or inserter, so the tier reads
+without selecting anything, and the label itself is clickable: it selects the
+connection, and its border turns `--brass` on hover the way the line does.
+
+## Build view
+
+A plan's second view, picked from a `Graph | Build` control next to the plan name. It
+is a tile grid rather than a node canvas, because what it answers is physical: does
+this layout actually move the items the graph says it should.
+
+```
++--------------------------------------------------------------------------------+
+| header, unchanged, with Graph | Build                                          |  44px
++--------------------------------------------------------+-----------------------+
+| [>][belt][ins][asm][src][snk][chest][x] | variants | R  [o][>][>|] 1x 4x 16x 0:42 |  36px
++--------------------------------------------------------+-----------------------+
+|  . . . . . . . . . . . . . . . . . . . . . . . . . .  |  Build                |
+|  . [Cu]>>>>>>>>>> . . . . . <<<<<<<<<<[Fe] . . . . . .  |  Clock          1:20  |
+|  . . . . . . [i] . . . . . . . [i] . . . . . . . . . .  |  Output               |
+|  . . . +-------+ [i] +-------+ . . . . . . . . . . . .  |   [ic] Circuit  1.0/s |
+|  . . . | cable |---->| circ. | . . . . . . . . . . . .  |  Machines             |
+|  . . . +=======+ . . +====---+ . . . . . . . . . . . .  |   [ic] Cable    100 % |
++--------------------------------------------------------+-----------------------+
+```
+
+- **Toolbar, 36px**, `--panel`, one hairline below. Tools as 28px buttons, game
+  sprites where the game has the thing (belt, inserter, machine, chest) and line glyphs
+  where it does not (select, source, sink, remove). The active tool is the only copper in
+  the strip. The active tool's options follow: belt tiers, inserter types, the machine
+  and recipe, the source item, and a rotation arrow. The simulation controls and the mono
+  clock sit at the right end behind a hairline.
+- **Grid**: same `--bg-canvas` and corner dots as the graph canvas, one dot per tile.
+  Entities are drawn the way nodes are: `--panel` blocks, `--line` borders, 3px of
+  nothing, no shadows. Belts show one chevron per tier (one for yellow, four for turbo)
+  instead of the game's colours, because red and blue would collide with `--warn` and
+  `--fluid`. Items are their sprites, on the lane they are actually on, following the
+  arc round a curve.
+- **Machines** carry two bars along the bottom: a thin `--ink-muted` one for the craft
+  in progress, and under it the share of the last 30 s spent crafting, `--brass` when it
+  is at 95 % or more and `--warn` when it is not keeping up. That is the build view's
+  version of an unbalanced port, and the only place it uses `--warn` on the grid.
+- **Inspector**: the same 320px rail with hairline sections, always open. With nothing
+  selected it is the test report — output over the last 30 s with the plan's figure
+  beside it, input, and each recipe's share of time crafting. With an entity selected it
+  is that entity's settings and live state.
+- **Undergrounds and splitters** are shapes of the belt tool, drawn the same way as
+  belts plus one part: a hood over the half that is under the ground, and a bar across
+  a splitter's two halves. An underground with no partner draws its hood edge in
+  `--warn`, because it is a broken line. A splitter's filter sits on the bar in a
+  framed square, so it is never read as an item on the belt.
+- **Lay out in build** (B, or the button beside Build inputs) turns a recipe node into
+  a row: machines side by side, ingredients on one or two belts a lane each, inserters
+  sized to the rate, output to a sink that carries the node's planned rate. It opens
+  the build view framed on the new row and says up front what will not keep up.
+- **Lay out plan** (Shift B, or the one text button in the build toolbar) does the same
+  for every recipe at once: rows stacked in production order, a belt routed along each
+  link, the plan's raw inputs from sources and its products to sinks.
+- **Red on a machine means starved**, waiting for an ingredient for more than 5 % of the
+  window. A machine idle because its output is full is spare capacity, and stays brass.
+- **Keys follow the game** where it has one: R rotates, Q picks up the tool for what is
+  under the pointer, right-click removes, a dragged belt follows the pointer round
+  corners. Ctrl C / Ctrl V copy a selection as a stamp, and R turns the stamp.
 
 ## Type
 

@@ -6,6 +6,11 @@ result is a ratio sheet you can read spatially and share as a URL.
 
 **[basta.github.io/factory-graph](https://basta.github.io/factory-graph/)**
 
+Each plan also has a **Build** view: a tile grid where you lay the plan out with belts,
+inserters and machines, then run a tick-by-tick simulation of it. The report beside
+the grid shows what the build actually delivers against what the plan asked for, and
+which machines are not keeping up. A design is tested before it is built in the game.
+
 Static site, no backend. Factorio 2.0 base + Space Age.
 
 ## Running it
@@ -14,7 +19,7 @@ Static site, no backend. Factorio 2.0 base + Space Age.
 npm install
 npm run dev          # http://localhost:5173
 npm run build        # type-check and build to dist/
-npm test             # unit tests: solver, store, serializer, library, layout, data
+npm test             # unit tests: solver, simulator, store, serializer, library, layout, data
 npm run smoke        # drives the built app in a real browser (needs `build` first)
 npm run check        # lint + test + build + smoke, what CI runs
 npm run shot -- name # screenshot the built app into shots/
@@ -23,12 +28,14 @@ npm run shot -- name # screenshot the built app into shots/
 `npm test` covers everything that is a pure function. `npm run smoke` covers what
 is not: port-to-port drags, the drop-on-empty-canvas search, click-to-select,
 the clipboard, a real file download and re-import, auto-layout, switching
-between saved plans, and the reduced-motion path. Both run in CI.
+between saved plans, laying out and running a build, and the reduced-motion path.
+Both run in CI.
 
 To poke at a specific graph, `npx tsx scripts/make-fixture.ts <name>` prints a
 share hash you can paste after the `#` — `green-circuits`, `unbalanced`,
 `saturated-belt`, `over-belt`, `blocks`, `kovarex`, `tangle`, `beacons`,
-`no-constraint`.
+`no-constraint`, two that come with a build to open in the Build view, `circuit-cell` and `belt-shapes`, and
+`green-science`, six recipes to try Lay out plan (Shift B) on.
 
 ## Refreshing the game data
 
@@ -79,6 +86,8 @@ src/
   solver/   rates.ts (formulas), lp.ts (LP build), index.ts (solve), tests
   graph/    zustand store, history, serializer, url, saved-plan library
   canvas/   React Flow setup and custom nodes, edges, handles, grid
+  build/    the Build view: entity specs, placement rules, tools, canvas, inspector
+  sim/      the tick simulator: world compile (world.ts), one tick (step.ts), meters
   ui/       Header, Inspector, Search, Toast, ShortcutsOverlay
   tokens.css
 scripts/    data fetch, data import, screenshots

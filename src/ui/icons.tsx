@@ -146,3 +146,62 @@ export const WarnIcon = (p: GlyphProps): JSX.Element =>
     </>,
     p,
   );
+
+export const PointerIcon = (p: GlyphProps): JSX.Element =>
+  svg(<path d="M3.5 2.5 12 8.2l-3.8.9 2.3 4.2-1.5.8-2.3-4.2L4 12.6z" />, p);
+
+export const EraseIcon = (p: GlyphProps): JSX.Element =>
+  svg(
+    <>
+      <path d="M6.2 13.5 2.5 9.8a1 1 0 0 1 0-1.4L8.4 2.5a1 1 0 0 1 1.4 0l3.7 3.7a1 1 0 0 1 0 1.4L7.6 13.5z" />
+      <path d="M5 6 10 11" />
+      <path d="M6.2 13.5h7.3" />
+    </>,
+    p,
+  );
+
+/** Something coming out of a box: an endless supply. */
+export const SourceIcon = (p: GlyphProps): JSX.Element =>
+  svg(
+    <>
+      <rect x="2.5" y="4.5" width="7" height="7" />
+      <path d="M6 8h8" />
+      <path d="M11.5 5.5 14 8l-2.5 2.5" />
+    </>,
+    p,
+  );
+
+/** Something going into a box: where output is counted. */
+export const SinkIcon = (p: GlyphProps): JSX.Element =>
+  svg(
+    <>
+      <rect x="6.5" y="4.5" width="7" height="7" />
+      <path d="M2 8h8" />
+      <path d="M7.5 5.5 10 8l-2.5 2.5" />
+    </>,
+    p,
+  );
+
+export const PlayIcon = (p: GlyphProps): JSX.Element => svg(<path d="M4.5 3v10l8-5z" />, p);
+
+export const PauseIcon = (p: GlyphProps): JSX.Element =>
+  svg(<path d="M5.5 3.5v9M10.5 3.5v9" />, p);
+
+/** One tick forward: a play triangle against a bar. */
+export const StepIcon = (p: GlyphProps): JSX.Element =>
+  svg(
+    <>
+      <path d="M3.5 3.5v9l6.5-4.5z" />
+      <path d="M12.5 3.5v9" />
+    </>,
+    p,
+  );
+
+export const ResetIcon = (p: GlyphProps): JSX.Element =>
+  svg(
+    <>
+      <path d="M3 8a5 5 0 1 0 1.5-3.6" />
+      <path d="M3 2.5v3h3" />
+    </>,
+    p,
+  );

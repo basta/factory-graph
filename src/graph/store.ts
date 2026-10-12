@@ -1,10 +1,12 @@
 import { create } from 'zustand';
 import type { GameIndex } from '../data/loader.ts';
-import { defaultMachineFor } from '../data/loader.ts';
 import * as history from './history.ts';
 import type { PlanMeta } from './library.ts';
 import type { GraphDocument } from './serialize.ts';
+import { applySettings, DEFAULT_SETTINGS, preferredMachine, settingsOf } from './settings.ts';
 import { emptyGraph } from './types.ts';
+import * as edit from '../build/edit.ts';
+import { emptyBuild, type Build, type BuildEntity, type HandSize } from '../build/types.ts';
 import type {
   BeaconConfig,
   Blocks,
@@ -13,6 +15,7 @@ import type {
   Graph,
   GraphNode,
   NodeId,
+  PlanSettings,
   Position,
   RateConstraint,
   RecipeNode,
@@ -27,9 +30,13 @@ export function newId(prefix: string): string {
 }
 
 export interface GraphState extends GraphDocument {
+  /** Always present in memory; only the saved document may leave it out. */
+  build: Build;
   history: history.History<GraphDocument>;
   selection: NodeId[];
   selectedEdges: string[];
+  /** Selected entities on the build view. Not undoable, like node selection. */
+  buildSelection: string[];
   /** Every saved plan, in the order the switcher lists them. */
   plans: PlanMeta[];
   /** Which of them is on the canvas. Null only before the first boot step. */
@@ -80,6 +87,11 @@ interface Actions {
   /** Drops a deleted plan's parked undo stack. */
   forgetPlan(id: string): void;
   setProjectName(name: string): void;
+  /**
+   * Changes the plan's settings and moves everything that followed the old
+   * ones along with them — one undo step for the lot.
+   */
+  setSettings(next: PlanSettings, index: GameIndex): void;
 
   addNode(node: GraphNode, position: Position): void;
   addNodes(nodes: { node: GraphNode; position: Position }[]): void;
@@ -108,6 +120,14 @@ interface Actions {
   canRedo(): boolean;
 
   setSelection(nodes: NodeId[], edges: string[]): void;
+
+  /** Ids now standing where each entity went, or null where it did not fit. */
+  placeEntities(entities: BuildEntity[]): (string | null)[];
+  removeEntities(ids: string[]): void;
+  updateEntity(id: string, patch: Partial<BuildEntity>): void;
+  rotateEntity(id: string): void;
+  setHands(hands: HandSize): void;
+  setBuildSelection(ids: string[]): void;
 }
 
 export type GraphStore = GraphState & Actions;
@@ -117,7 +137,11 @@ function sameIds(a: readonly string[], b: readonly string[]): boolean {
 }
 
 function snapshot(state: GraphState): GraphDocument {
-  return { graph: structuredClone(state.graph), projectName: state.projectName };
+  return {
+    graph: structuredClone(state.graph),
+    projectName: state.projectName,
+    build: structuredClone(state.build),
+  };
 }
 
 export const useGraphStore = create<GraphStore>()((set, get) => {
@@ -129,12 +153,23 @@ export const useGraphStore = create<GraphStore>()((set, get) => {
     }));
   }
 
+  /** The build-side twin of `commit`: one undo point per change. */
+  function commitBuild(mutate: (build: Build) => Build): void {
+    set((state) => {
+      const build = mutate(state.build);
+      if (build === state.build) return {};
+      return { build, history: history.push(state.history, snapshot(state)) };
+    });
+  }
+
   return {
     graph: emptyGraph('2x1'),
     projectName: 'Untitled factory',
+    build: emptyBuild(),
     history: history.emptyHistory<GraphDocument>(),
     selection: [],
     selectedEdges: [],
+    buildSelection: [],
     plans: [],
     activeId: null,
 
@@ -143,9 +178,11 @@ export const useGraphStore = create<GraphStore>()((set, get) => {
       set({
         graph: doc.graph,
         projectName: doc.projectName,
+        build: doc.build ?? emptyBuild(),
         history: history.emptyHistory<GraphDocument>(),
         selection: [],
         selectedEdges: [],
+        buildSelection: [],
         activeId: null,
       });
     },
@@ -162,9 +199,11 @@ export const useGraphStore = create<GraphStore>()((set, get) => {
           activeId: id,
           graph: doc.graph,
           projectName: doc.projectName,
+          build: doc.build ?? emptyBuild(),
           history: unpark(id),
           selection: [],
           selectedEdges: [],
+          buildSelection: [],
         };
       });
     },
@@ -182,6 +221,10 @@ export const useGraphStore = create<GraphStore>()((set, get) => {
         projectName: name,
         history: history.push(state.history, snapshot(state)),
       }));
+    },
+
+    setSettings(next, index) {
+      commit((graph) => applySettings(graph, settingsOf(graph), next, index));
     },
 
     addNode(node, position) {
@@ -371,6 +414,9 @@ export const useGraphStore = create<GraphStore>()((set, get) => {
           history: step.history,
           graph: step.present.graph,
           projectName: step.present.projectName,
+          build: step.present.build ?? emptyBuild(),
+          // An undone placement may take a selected entity with it.
+          buildSelection: keepExisting(state.buildSelection, step.present.build),
         };
       });
     },
@@ -383,6 +429,9 @@ export const useGraphStore = create<GraphStore>()((set, get) => {
           history: step.history,
           graph: step.present.graph,
           projectName: step.present.projectName,
+          build: step.present.build ?? emptyBuild(),
+          // An undone placement may take a selected entity with it.
+          buildSelection: keepExisting(state.buildSelection, step.present.build),
         };
       });
     },
@@ -398,15 +447,60 @@ export const useGraphStore = create<GraphStore>()((set, get) => {
         return { selection: nodes, selectedEdges: edges };
       });
     },
+
+    placeEntities(entities) {
+      if (entities.length === 0) return [];
+      const result = edit.placeEntities(get().build, entities);
+      if (result.placed.every((id) => id === null)) return result.placed;
+      commitBuild(() => result.build);
+      return result.placed;
+    },
+
+    removeEntities(ids) {
+      if (ids.length === 0) return;
+      const doomed = new Set(ids);
+      if (!get().build.entities.some((entity) => doomed.has(entity.id))) return;
+      commitBuild((build) => edit.removeEntities(build, ids));
+      set((state) => ({
+        buildSelection: state.buildSelection.filter((id) => !doomed.has(id)),
+      }));
+    },
+
+    updateEntity(id, patch) {
+      commitBuild((build) => edit.updateEntity(build, id, patch));
+    },
+
+    rotateEntity(id) {
+      commitBuild((build) => edit.rotateEntity(build, id));
+    },
+
+    setHands(hands) {
+      commitBuild((build) => (build.hands === hands ? build : { ...build, hands }));
+    },
+
+    setBuildSelection(ids) {
+      set((state) => (sameIds(state.buildSelection, ids) ? {} : { buildSelection: ids }));
+    },
   };
 });
 
+function keepExisting(ids: string[], build: Build | undefined): string[] {
+  if (ids.length === 0) return ids;
+  const present = new Set((build?.entities ?? []).map((entity) => entity.id));
+  const kept = ids.filter((id) => present.has(id));
+  return kept.length === ids.length ? ids : kept;
+}
+
 // --- node constructors -------------------------------------------------------
 
-export function makeRecipeNode(index: GameIndex, recipeId: string): RecipeNode | null {
+export function makeRecipeNode(
+  index: GameIndex,
+  recipeId: string,
+  settings: PlanSettings = DEFAULT_SETTINGS,
+): RecipeNode | null {
   const recipe = index.recipes.get(recipeId);
   if (!recipe) return null;
-  const machineId = defaultMachineFor(index, recipe);
+  const machineId = preferredMachine(index, recipe, settings);
   if (machineId === null) return null;
   const machine = index.machines.get(machineId);
   return {
@@ -424,8 +518,11 @@ export function makeSourceNode(itemId: string): GraphNode {
   return { id: newId('s'), kind: 'source', itemId, constraint: { type: 'free' } };
 }
 
-export function makeSinkNode(itemId: string): GraphNode {
-  return { id: newId('k'), kind: 'sink', itemId, constraint: { type: 'free' } };
+export function makeSinkNode(
+  itemId: string,
+  constraint: RateConstraint = { type: 'free' },
+): GraphNode {
+  return { id: newId('k'), kind: 'sink', itemId, constraint };
 }
 
 export function makeNoteNode(text = ''): GraphNode {

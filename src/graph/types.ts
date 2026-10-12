@@ -75,6 +75,26 @@ export interface Position {
   y: number;
 }
 
+/**
+ * Choices a plan makes once instead of on every node and connection: what new
+ * connections are carried on, which machines new nodes use, where Expand
+ * stops, and the unit rates are shown in.
+ */
+export interface PlanSettings {
+  /** Belt every new item connection starts on; null for none. */
+  beltId: string | null;
+  /**
+   * Machines new nodes prefer, first match wins — one per family, such as
+   * `assembling-machine-2` and `steel-furnace`. A recipe none of them can make
+   * falls back to the data set's ranking.
+   */
+  machines: string[];
+  /** Items Expand leaves as inputs rather than building, such as bus plates. */
+  bus: string[];
+  /** Rates are stored per second; this is only how they are shown. */
+  unit: 's' | 'min';
+}
+
 /** Positions live outside the semantic graph so the solver never sees layout. */
 export interface Graph {
   version: 1;
@@ -82,6 +102,8 @@ export interface Graph {
   nodes: GraphNode[];
   edges: FlowEdge[];
   positions: Record<NodeId, Position>;
+  /** Absent on plans saved before settings existed; read with `settingsOf`. */
+  settings?: PlanSettings;
 }
 
 /**
@@ -102,6 +124,13 @@ export type PortKey = `${NodeId}:${string}`;
 export const portKey = (nodeId: NodeId, side: PortSide, itemId: string): PortKey =>
   `${nodeId}:${side}:${itemId}`;
 
-export function emptyGraph(dataSet: string): Graph {
-  return { version: 1, dataSet, nodes: [], edges: [], positions: {} };
+export function emptyGraph(dataSet: string, settings?: PlanSettings): Graph {
+  return {
+    version: 1,
+    dataSet,
+    nodes: [],
+    edges: [],
+    positions: {},
+    ...(settings ? { settings } : {}),
+  };
 }

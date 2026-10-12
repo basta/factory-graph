@@ -1,10 +1,12 @@
-import { memo } from 'react';
+import { memo, useState } from 'react';
 import { useGameData } from '../data/context.ts';
 import { useGraphStore } from '../graph/store.ts';
 import { portKey, type RecipeNode } from '../graph/types.ts';
 import { useSolve } from '../solver/context.ts';
 import { Sprite } from '../ui/Sprite.tsx';
 import { perBlock, rate } from '../ui/format.ts';
+import { useFlow, type FlowFormat } from '../ui/units.ts';
+import { InlineNumber } from './InlineNumber.tsx';
 import { nodeShape, type Port } from './geometry.ts';
 import { PortHandle } from './PortHandle.tsx';
 import { useConnecting } from './connecting.ts';
@@ -31,7 +33,10 @@ export const RecipeNodeView = memo(function RecipeNodeView({
     state.graph.nodes.find((candidate) => candidate.id === data.nodeId),
   );
   const result = useSolve();
+  const flow = useFlow();
   const connecting = useConnecting();
+  const setConstraint = useGraphStore((state) => state.setConstraint);
+  const [editing, setEditing] = useState(false);
 
   if (!node || node.kind !== 'recipe') return null;
 
@@ -61,16 +66,26 @@ export const RecipeNodeView = memo(function RecipeNodeView({
           {recipe?.name ?? node.recipeId}
         </span>
         <span className={styles.machine}>
-          <span
-            className={['mono', styles.count, pinned ? styles.pinned : ''].join(' ')}
-            title={
-              constraint.type === 'machines'
-                ? `Fixed at ${constraint.count} machines${inBlocks}`
-                : `Solved machine count${inBlocks}`
-            }
-          >
-            {machineCount}
-          </span>
+          {editing ? (
+            <InlineNumber
+              initial={machines ?? 0}
+              // Typing a count fixes it, the same as the inspector's field.
+              onCommit={(count) => setConstraint(node.id, { type: 'machines', count })}
+              onDone={() => setEditing(false)}
+            />
+          ) : (
+            <span
+              className={['mono', styles.count, pinned ? styles.pinned : ''].join(' ')}
+              title={`${
+                constraint.type === 'machines'
+                  ? `Fixed at ${constraint.count} machines${inBlocks}`
+                  : `Solved machine count${inBlocks}`
+              }. Double-click to type one.`}
+              onDoubleClick={() => setEditing(true)}
+            >
+              {machineCount}
+            </span>
+          )}
           {machine ? <Sprite icon={machine.icon} size={16} title={machine.name} /> : null}
         </span>
       </div>
@@ -136,7 +151,7 @@ export const RecipeNodeView = memo(function RecipeNodeView({
             )}
             connectingItemId={connecting.nodeId === null ? null : connecting.itemId}
             connectingSide={connecting.side}
-            title={portTitle(index.items.get(port.itemId)?.name ?? port.itemId, balance)}
+            title={portTitle(index.items.get(port.itemId)?.name ?? port.itemId, balance, flow)}
           />
         );
       })}
@@ -147,13 +162,14 @@ export const RecipeNodeView = memo(function RecipeNodeView({
 function portTitle(
   itemName: string,
   balance: { balance: number; connected: boolean } | undefined,
+  flow: FlowFormat,
 ): string {
   if (!balance || !balance.connected || Math.abs(balance.balance) <= BALANCE_EPSILON) {
     return itemName;
   }
   return balance.balance < 0
-    ? `Missing ${rate(-balance.balance)}/s ${itemName.toLowerCase()}`
-    : `${rate(balance.balance)}/s ${itemName.toLowerCase()} with nowhere to go`;
+    ? `Missing ${flow.text(-balance.balance)} ${itemName.toLowerCase()}`
+    : `${flow.text(balance.balance)} ${itemName.toLowerCase()} with nowhere to go`;
 }
 
 function PortRow({
@@ -167,6 +183,7 @@ function PortRow({
 }): JSX.Element {
   const index = useGameData();
   const result = useSolve();
+  const flow = useFlow();
   const item = index.items.get(port.itemId);
   const balance = result?.ports[portKey(node.id, port.side, port.itemId)];
   const warn = Boolean(balance && balance.connected && Math.abs(balance.balance) > BALANCE_EPSILON);
@@ -185,7 +202,7 @@ function PortRow({
     <div className={styles.row}>
       {item ? <Sprite icon={item.icon} size={16} /> : null}
       <span className={['mono', styles.rate, warn ? styles.rateWarn : ''].join(' ')}>
-        {perSec === null ? '—' : rate(perSec)}
+        {perSec === null ? '—' : flow.number(perSec)}
       </span>
       <span className={styles.itemName} title={item?.name ?? port.itemId}>
         {item?.name ?? port.itemId}

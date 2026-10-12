@@ -33,7 +33,8 @@
    click. Not a modal: the graph is still fully editable behind it. */
 .hint {
   position: absolute;
-  top: 12px;
+  /* Below the plan bar, which owns the top edge. */
+  top: 52px;
   left: 50%;
   transform: translateX(-50%);
   z-index: 4;

@@ -5,7 +5,8 @@ import type { SolveResult } from '../solver/types.ts';
 import { IconButton } from './Button.tsx';
 import { PlanSwitcher } from './PlanSwitcher.tsx';
 import { Sprite } from './Sprite.tsx';
-import { pollution, power, rate } from './format.ts';
+import { useFlow } from './units.ts';
+import { pollution, power } from './format.ts';
 import {
   ExportIcon,
   HelpIcon,
@@ -20,7 +21,12 @@ import {
 } from './icons.tsx';
 import styles from './Header.module.css';
 
+/** The two ways of looking at a plan: its ratios, and a layout to test. */
+export type View = 'graph' | 'build';
+
 interface Props {
+  view: View;
+  onViewChange: (view: View) => void;
   projectName: string;
   onProjectNameChange: (name: string) => void;
   plans: PlanMeta[];
@@ -51,6 +57,7 @@ export function Header(props: Props): JSX.Element {
   const { data, items } = useGameData();
 
   const result = props.result;
+  const flow = useFlow();
   // A graph with an unbalanced port has totals that do not add up, so say so
   // rather than letting the strip read like a valid bill of materials.
   const unbalanced = Object.values(result?.ports ?? {}).filter(
@@ -75,6 +82,21 @@ export function Header(props: Props): JSX.Element {
         onNew={props.onNewPlan}
         onDelete={props.onDeletePlan}
       />
+      <span className={styles.views} role="tablist" aria-label="View">
+        {(['graph', 'build'] as View[]).map((view) => (
+          <button
+            key={view}
+            type="button"
+            role="tab"
+            aria-selected={props.view === view}
+            className={[styles.viewTab, props.view === view ? styles.viewOn : ''].join(' ')}
+            title={view === 'graph' ? 'The ratio graph' : 'Lay the plan out on a grid and simulate it'}
+            onClick={() => props.onViewChange(view)}
+          >
+            {view === 'graph' ? 'Graph' : 'Build'}
+          </button>
+        ))}
+      </span>
       <span className={styles.dataSet}>{data.name}</span>
       {CHANNEL === 'staging' ? (
         // Staging and the live site look identical otherwise, and editing the
@@ -114,7 +136,7 @@ export function Header(props: Props): JSX.Element {
               return (
                 <span className={styles.total} key={itemId} title={`${item.name} in`}>
                   <Sprite icon={item.icon} size={16} />
-                  <span className="mono">{rate(value)}/s</span>
+                  <span className="mono">{flow.text(value)}</span>
                 </span>
               );
             })}
@@ -137,6 +159,7 @@ export function Header(props: Props): JSX.Element {
           <IconButton
             label="Auto-layout (Ctrl L)"
             onClick={props.onLayout}
+            disabled={props.view !== 'graph'}
             className={styles.wide}
           >
             <LayoutIcon />

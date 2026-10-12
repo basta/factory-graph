@@ -1,0 +1,73 @@
+/* The same sheet as the shortcuts list: one panel, hairlines, no shadow. */
+.scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: grid;
+  place-items: center;
+  background: color-mix(in srgb, var(--bg-canvas) 78%, transparent);
+}
+
+.panel {
+  width: min(560px, calc(100vw - 32px));
+  max-height: calc(100vh - 96px);
+  overflow: auto;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 44px;
+  padding: 0 8px 0 14px;
+  border-bottom: 1px solid var(--line);
+}
+
+.title {
+  font-size: var(--size-title);
+  font-weight: 500;
+}
+
+.entry {
+  padding: 12px 14px 10px;
+  border-bottom: 1px solid var(--line);
+}
+
+.entryTitle {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin: 0 0 6px;
+  font-size: var(--size-ui);
+  font-weight: 500;
+}
+
+.date {
+  margin-left: auto;
+  font-weight: 400;
+  color: var(--ink-muted);
+  white-space: nowrap;
+}
+
+.items {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--ink);
+}
+
+.items li {
+  padding: 2px 0;
+}
+
+.items li::marker {
+  color: var(--ink-muted);
+}
+
+.foot {
+  display: flex;
+  justify-content: flex-end;
+  padding: 10px 14px;
+}

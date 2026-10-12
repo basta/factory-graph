@@ -620,3 +620,334 @@ the nodes as well.
 - **Multi-recipe blocks.** Stamping out a whole cell — cable and circuits
   together — needs grouping, collapse and layout inside a group. Single-node
   blocks cover planning one recipe at a time back from a sink.
+
+## M8 — Fewer clicks
+
+Counted first. A plan from a sink — 45/s of green circuits on assembler 2s and red
+belts, plates off a bus — took about 22 clicks and 4 drags, and 16 of the clicks
+were belts. Almost none of them were decisions; they were the same decision repeated
+per node and per connection. Everything below is aimed at that count, and it is now
+`Ctrl K`, "electronic circuit", `Shift Enter`, `45`, `Enter`, `E`, `E`, plus one
+click on the plan bar for red belts.
+
+### Plan settings
+
+The choices made once per base: belt, assembler tier, furnace tier, unit, bus items.
+They live on the graph, so they travel in share links and undo with everything else,
+and a new plan starts from whatever the last change left.
+
+- **Changing one moves what followed it.** Connections on the old belt go to the new
+  one and machines on the old tier go to the new tier, in one undo step. Anything set
+  by hand to something else is left alone, which is what makes "this plan is on red
+  belts now" one click instead of one per connection — and what keeps the one blue
+  belt you set on purpose.
+- **The plan's machine comes before the data set's ranking.** The ranking put the
+  electromagnetic plant first for circuits and cable, which no early base has. A recipe
+  none of the plan's machines can make still falls back to the ranking.
+- **Older plans read as yellow belts, assembler 2s and steel furnaces** — an early-mid
+  game base, where most planning happens.
+- **Rates are still stored per second.** `/min` only changes what is shown and what the
+  rate fields take.
+
+### Expand
+
+`E` builds a producer for every unconnected input of the selection and selects the
+new nodes, so `E` again goes one step further up. Bus items are skipped; that is
+where a chain planned off a main bus stops. A sink's own item is always built.
+
+The recipe is picked without asking when there is only one sane answer: the recipe
+named after the item, a sole standard recipe, or mining for an ore. Thirteen items
+have a real choice — petroleum gas, solid fuel, uranium, a handful of Space Age
+fluids — and Expand opens the search for those rather than guessing.
+
+### The search was suggesting recycling
+
+"Standard" leaves out recycling and barrels. Writing that rule for Expand turned up
+a bug in the search: dragging from an iron plate input listed producers in data order,
+and the data has forty-odd recycling recipes for iron plate ahead of the furnace. So
+"drag, Enter" built a firearm magazine recycler. Continuing a connection now lists
+nodes already on the canvas, then the main recipe, then other standard ones, with
+recycling and barrels last.
+
+### Smaller things
+
+- `Shift Enter` in the search adds the row's item as a sink, fixed, with its rate field
+  focused — the next thing typed is the rate.
+- `1`–`4` on selected connections set the belt tier, `0` removes it; on selected nodes
+  `1`–`3` set the tier within the machine's family.
+- Double-click a machine count or a rate to type it in place.
+- A connection's label shows its belt's sprite and selects the connection when clicked.
+  React Flow's label layer ignores the pointer by default, which is why the first try
+  did nothing; the label opts back in with `pointer-events: all` and stops the click
+  before the canvas reads it as a click on empty space.
+
+### Learning the keys
+
+Shortcuts nobody knows about save nobody any clicks, and a list behind `?` gets read
+once. So a strip along the bottom of the canvas shows the three or four keys that fit
+the selection — select a recipe and it says `E` builds inputs, select a connection and
+it says `1`–`4` set the belt — and changes as the selection does. A test holds every
+key it shows to one the shortcuts list documents, so it cannot advertise a key that
+does nothing. It hides with its own ×, remembered per browser, and the shortcuts list
+has the switch to bring it back.
+
+The first cut tried five hints for a recipe and clipped mid-word once the inspector
+took its 320px — and clipped the close button with it. Four hints, and the close
+button outside the part that clips.
+
+Mouse users meet the keys too: the inspector grew a *Build inputs* button carrying an
+`E` key cap, and the controls that have a key say so in their tooltip.
+
+The same screenshots showed the label wart from M7 got worse: with a node selected,
+React Flow lifts its connections above the label layer, so the line ran through the
+very labels that now carry the belt sprite. `elevateEdgesOnSelect` is off. It only
+ever mattered where two connections cross.
+
+### Staging
+
+All of this went to a staging site first, at `/staging/` — see the README. It shares
+`localStorage` with the live site, so it uses its own keys and starts from a copy of
+the live plans rather than editing them.
+
+## M9 — Fan-out
+
+One furnace feeding four consumers drew four connections up one shared vertical line,
+each turning halfway to its own target — so all four labels sat on that one line,
+stacked, none of them obviously belonging to the consumer it described. Consumers at
+different distances were worse: one vertical line each, side by side.
+
+A port with more than one connection is now drawn as a manifold. The spine sits a
+fixed 36px from the shared port rather than halfway to each target, so every branch
+uses the same one; a junction dot marks where the branches leave it; and each label
+moves onto the run that is that branch's alone, next to its consumer. A fan-in — several
+producers into one port — is the mirror image, with the labels by the producers.
+A branch whose target is too close or behind its source keeps the ordinary route.
+
+`shots/m10-fanout-before.png` and `m10-fanout-after.png` are the `fan-out` fixture;
+`m10-fanout-mixed.png` staggers the consumers and adds a fan-in.
+
+## M10 — Auto-layout for the routing
+
+With manifolds in, `Ctrl L` was the weak link. ELK was laying out node *centres* while
+connections attach at port rows, so after a layout nearly every connection had a small
+jog in it; and the 120px between columns left a manifold branch no room for its label.
+
+Judged by numbers this time, not screenshots. `scoreLayout` traces each connection the
+way the canvas draws it and counts bent connections, connections running behind a node
+they do not touch, labels landing on a label or a node, and pairs of connections drawn
+along the same stretch of line. Run over the fixtures and a red-and-green-science tree
+built with Expand down to ore (26 nodes):
+
+```
+                 bent       through   label clashes
+                 old  new   old new   old new
+science  (24)    23   7     0   0     0   0
+tangle   (10)    8    4     2   0     4   0
+fan-out   (4)    4    3     0   0     4   0
+kovarex   (3)    3    1     0   0     3   0
+```
+
+- **Ports.** Each node now hands ELK its ports at their real row offsets
+  (`portConstraints: FIXED_POS`), so it lines ports up rather than centres. This alone
+  took the science tree from 23 bent connections to 6.
+- **180px between columns**, for a 36px spine plus a branch long enough to carry its
+  label clear of the next node. At 120 the fan-out labels sat on the nodes.
+- **Network simplex placement.** Brandes-Köpf left two connections in `tangle` running
+  behind unrelated nodes; network simplex was the only placement that never did, for
+  at most one more bend. Balanced alignment, extra crossing-minimisation passes, edge
+  merging and laying out from scratch were all tried and none did better — from scratch
+  did worse, as well as reshuffling what the user was reading.
+
+A fan-out is never all straight: one producer lines up with one of its consumers.
+
+What is left: one pair of connections in `tangle` shares a few pixels of line, because
+each connection still picks where to turn on its own. Routing them with knowledge of each
+other — or keeping ELK's own routes until a node moves — is the next step if it matters.
+
+ELK throws on a connection to a port it was not given, so a connection whose item no
+longer matches its node (the solver already ignores those) sits the layout out.
+
+`channel.ts` also stopped assuming Vite: under plain Node, as in a script, there is no
+`import.meta.env` at all, and that now reads as the live channel instead of throwing.
+
+## M11 — Routing all connections together
+
+A screenshot from use: casting iron and casting copper cable, stacked in one column,
+each feeding the same two circuit blocks. Both manifold spines sat 36px out from ports
+at the same x — one line, two fan-outs, no telling them apart — and on each circuit the
+iron and copper labels, one 18px row apart and 25px tall, sat on top of each other.
+The `two-fanouts` fixture is that plan.
+
+Both problems were the same one: every connection picked its route alone. A routing
+pass (`routingPlan.ts`) now decides them together, once per graph change, and each
+connection draws from its entry:
+
+- **Spine lanes.** Fan-outs and fan-ins are placed first, then single elbows, top to
+  bottom. Each takes the first candidate position — 36px out, then 14px further per
+  lane; for an elbow, halfway, then 14px either side — where its vertical run does not
+  sit on another's and none of its horizontal runs shares a stretch with a different
+  flow. That also cleared the one shared stretch in `tangle` that M10 left.
+- **Labels.** Each label tries the middle of its own run, then points along it, then
+  the same just above or below the line, and takes the first that overlaps no label
+  and no node. Leaving the line costs a little, so it only happens when it buys room.
+
+The plan is relative — how far out a spine sits, how far along its run a label goes —
+so it is applied to React Flow's own handle positions and the lines always meet the
+ports. It is memoised on the graph object, and an entry that did not change keeps its
+identity, so moving one node does not re-render every connection. `scoreLayout` traces
+from the same plan, so the score is of what is on screen; across the fixtures and the
+science tree, shared stretches went to zero, and label clashes from 24 to 2 on the
+science tree (two runs too short for a label anywhere).
+
+## M12 — Build view
+
+A second view per plan: lay the design out on a tile grid with belts, inserters and
+machines, then run it a tick at a time and see whether it delivers what the graph
+said it would. The plan document gained an optional `build`, so a build saves,
+shares, exports and undoes with the graph it belongs to. Plans and links from before
+it existed load unchanged, and a plan with nothing built saves byte-identical to
+before.
+
+### Decisions
+
+- **One undo stack per plan, not one per view.** The build lives in the same store
+  and the same snapshots as the graph. A second stack would have needed its own
+  parking on plan switch, its own autosave payload, and an answer to "what does Ctrl Z
+  do after I edited both". With one stack the answer is "the last thing you did",
+  which is also what a document editor does with two panes.
+- **The simulated world is not in the document.** What is on the belts is runtime
+  state in `src/sim/`, compiled from the build. An edit recompiles and carries each
+  entity's contents across by id, so you can re-aim a belt or swap an inserter on a
+  running design without draining it. The world is held at the editor level, so a
+  look at the graph and back finds the simulation where it was left. Opening another
+  plan, or pressing Reset, starts from nothing.
+- **Integer belt geometry.** A tile is 32 units, items are 8 apart, and a yellow belt
+  moves 1 unit a tick. Red, blue and turbo are 2, 3 and 4. Every position is an integer
+  and every tier lands exactly on its game throughput (15/30/45/60 per second), with
+  no drift to explain.
+- **Sources and sinks instead of drills and furnace columns.** A source is a loader
+  that fills the belt it faces, or an infinite chest for an inserter, optionally
+  rate-limited. A sink counts what arrives. A design under test is fed and drained by
+  these, the way people test designs in the game's editor with infinity chests.
+- **Footprints and inserter timings are hand-kept** in `build/entities.ts`, from the
+  2.0 prototypes, because FactorioLab's data models throughput, not entities. The
+  inserter half-swing is `0.5 / rotation_speed` ticks, and the tests check it against
+  the wiki's chest-to-chest figures (0.6, 0.83, 1.2 and 2.31 per second).
+
+### Deliberate simplifications
+
+These are listed so nobody mistakes them for bugs:
+
+- **No pipes.** Fluid ingredients and products are assumed piped in and out, and the
+  machine's inspector says so. Foundry and oil builds still simulate their solid side.
+- **No splitters, underground belts, modules or beacons yet.** Machine base
+  productivity (foundry, EM plant, biochamber) is modelled. Module effects are not.
+- **Curves use full-length lanes.** In the game the inner lane of a curve is shorter.
+  Throughput is the same either way; only how long an item spends on the corner
+  differs.
+- **Insertion limits are approximate.** An inserter tops a machine up to two crafts'
+  worth, or a little over a second's worth for fast recipes. The game's rule is in the
+  same spirit and does not change a design's verdict. Machines stop when an output
+  reaches a stack.
+- **Inserters do not need power or fuel**, and pick off belts without the game's
+  lane-position subtleties. Belt pickup waits up to 12 ticks for a fuller hand.
+
+### Bugs the tests and screenshots caught
+
+- **An express belt ran at 40/s, not 45.** At 3 units a tick, a new item was only
+  allowed on once the last one had moved a full gap. That landed every item at 9
+  units, not 8. Sources now put the new item exactly a gap behind the last one.
+- **A dead-end tile held five items a lane.** Items stopped at the tile edge, so 32,
+  24, 16, 8 and 0 all fitted. They now stop half a gap short.
+- **Inserters were 2 ticks slow per cycle.** Arriving and acting were separate
+  ticks, so a fast inserter managed 2.14 swings a second. Arrival now acts on the same
+  tick, giving the game's 2.31.
+- **The report doubled the plan's output.** `totals.outputs` already includes sinks,
+  so adding sink ports on top counted them twice.
+- **Leaving the build view reset the simulation.** The world lived inside the view and
+  was rebuilt when it remounted. Now it is held one level up.
+- `circuit-cell` (`npx tsx scripts/make-fixture.ts circuit-cell`) is the one to look
+  at. One cable assembler feeds one circuit assembler. The plan asks for 1.5
+  circuits/s and the build makes 1.0. The circuit machine's bar and its 67 % go to
+  `--warn`, which is the whole point of the view.
+
+### Undergrounds and splitters
+
+- **An underground's lane runs to its exit.** Lanes gained a length. An entrance's
+  lanes are `32 × span` units long and empty straight into the exit's lanes, so the
+  tiles under the ground hold items at belt density (a blocked four-tile tunnel holds 16
+  a lane, the test checks it) and take the right time to cross. No hidden tiles, no
+  special case in the mover.
+- **Pairing is the game's rule**: an entrance pairs with the first same-tier underground
+  ahead of it facing the same way, if that is an exit within reach (5/7/9/11). Placing
+  the tool behind a waiting entrance makes an exit, so laying a tunnel is two clicks, as
+  in the game.
+- **Splitters move items lane by lane** between input and output lanes of their own:
+  a left-lane item stays on a left lane. Each lane alternates outputs and inputs; a
+  priority side is tried first; a filter sends its item only to the priority side and
+  everything else only to the other. The tests run a 1-to-2 split (7.5 and 7.5), a
+  priority split (15 and 0), two full inputs through (30), and a filter sort.
+- **A filter drawn as a sprite looked like a stray item.** The screenshot showed one
+  iron plate on the copper lane after the sorter; a probe of the simulation found none.
+  It was the filter icon, drawn loose on the belt. It now sits on the bar in a framed
+  square.
+
+### Lay out in build
+
+`build/fromGraph.ts` turns a recipe node into the row every player builds first, sized
+from the solve: machines are the node's rounded-up count (one block's worth for a node
+split into blocks), inserter types are the slowest that keep up at 80 % of their
+chest-to-chest rate, and the output sink carries the node's planned rate as its target,
+so the report compares the row with *its* node rather than the whole plan.
+
+The tests do not check the layout's shape; they run it. Gears, circuits (two ingredients,
+a lane each), engines (a third ingredient on a second belt by long-handed inserter) and
+plastic (fluid assumed) are each laid out, simulated for two minutes, and must meet their
+target or keep every machine at least 97 % busy. Engines are judged by utilisation, since
+at 0.15/s a 30 s window sees four or five of them and the rate alone is too coarse.
+
+The first browser run is worth recording. Green circuits at 45/s on yellow belts is 18
+assembler 3s, and the row ran at 2.5/s with machines at 6 %. That is correct: cable has
+one lane of a yellow belt, 7.5/s, which is 2.5 circuits. The warning now says that in
+those words — which item, which lane, what it carries — and how many blocks would fit.
+
+### Lay out plan
+
+`build/wholePlan.ts` lays every recipe node out as a whole-node row, stacks the rows in
+production order with four empty rows between, and replaces the source at a consumer's
+feed and the sink at a producer's output with a belt routed by `build/route.ts`.
+
+- **Routing is A\* over (tile, direction of travel)**, with a small cost per turn so
+  straight runs win ties, and a tunnel move: the current tile becomes an underground
+  entrance and an exit lands up to the tier's reach ahead, never with a same-tier
+  underground between them. A tunnel costs its span plus four, so it is used to cross
+  something, not to shave a tile — the test that expected a route *round* a one-tile
+  wall was wrong, because under it is shorter.
+- **It never puts a belt in front of a belt that dead-ends.** That empty tile is where
+  the dead end would start side-loading, so a route through it would quietly take
+  items off another line. Every occupied tile and every such tile is off limits.
+- **One belt per output and per feed.** A producer feeding two consumers routes its
+  first link and stubs the rest with a source, and the toast counts them. Splitting
+  with splitters is the obvious next step.
+- **Rows had a leak to fix first.** With three or four ingredients the second belt
+  dead-ended into the tile where the first belt's north feed sits. Harmless while that
+  was a source; a routed belt there would have been side-loaded with the wrong items.
+  The second belt now stops a tile short.
+
+The test that mattered most was the simplest: cable into circuits, one circuit assembler
+at exactly 100 %. It delivered 94 % of plan. Probing the world found two causes:
+
+1. **Inserters only dropped at the exact middle of a tile.** A second inserter on a busy
+   lane waited out most of the passing gaps, so its machine backed up. Inserters now drop
+   into any gap within 12 units of the middle, nearest first.
+2. **Bulk inserters starve machines off a belt.** One bulk inserter fed the circuit
+   machine; it waits to collect 12 items while the machine's buffer of 9 cable runs out.
+   That is true to the game, which is why players feed from belts with two fast
+   inserters. Rows now do the same: one basic, one fast, several fast, and bulk only
+   when nothing else fits.
+
+**Starved is not idle.** A whole plan rounds every row up, so most rows make more than
+the next one takes and sit idle with their output full. Colouring by share of time
+crafting painted those red. Machines now keep a separate meter of ticks spent waiting
+for an ingredient, and red means more than 5 % of the window starved.
+

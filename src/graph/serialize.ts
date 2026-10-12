@@ -5,6 +5,8 @@ import lzString from 'lz-string';
 // cannot see them. Taking them off the default works in both Vite and Node.
 const { compressToEncodedURIComponent, decompressFromEncodedURIComponent } = lzString;
 import type { Graph } from './types.ts';
+import { buildSchema } from '../build/schema.ts';
+import type { Build } from '../build/types.ts';
 
 /**
  * The on-the-wire graph. Kept separate from the in-memory types so a bad
@@ -84,23 +86,36 @@ const edgeSchema = z.object({
   transport: transportSchema,
 });
 
+export const settingsSchema = z.object({
+  beltId: z.string().nullable(),
+  machines: z.array(z.string()),
+  bus: z.array(z.string()),
+  unit: z.union([z.literal('s'), z.literal('min')]),
+});
+
 export const graphSchema = z.object({
   version: z.literal(1),
   dataSet: z.string(),
   nodes: z.array(nodeSchema),
   edges: z.array(edgeSchema),
   positions: z.record(z.string(), z.object({ x: z.number().finite(), y: z.number().finite() })),
+  // Optional so plans and links from before settings existed still load.
+  settings: settingsSchema.optional(),
 });
 
-/** A saved project: the graph plus the one non-graph thing worth keeping. */
+/** A saved project: the graph, its name, and the build laid out from it. */
 export const documentSchema = z.object({
   graph: graphSchema,
   projectName: z.string(),
+  // Optional so plans and links from before builds existed still load.
+  build: buildSchema.optional(),
 });
 
 export interface GraphDocument {
   graph: Graph;
   projectName: string;
+  /** Absent when nothing has been built, which keeps old documents byte-identical. */
+  build?: Build;
 }
 
 export class GraphParseError extends Error {}
@@ -117,6 +132,11 @@ function prune(doc: GraphDocument): GraphDocument {
 }
 
 export function serializeDocument(doc: GraphDocument): string {
+  // An empty build is not worth a share link's length.
+  if (doc.build && doc.build.entities.length === 0 && doc.build.hands === 'researched') {
+    const { build: _empty, ...rest } = doc;
+    return JSON.stringify(rest);
+  }
   return JSON.stringify(doc);
 }
 

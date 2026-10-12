@@ -20,6 +20,25 @@
   stroke: var(--warn);
 }
 
+/* Filled with the line's own colour: the tone classes set stroke, this
+   borrows it. */
+.junction {
+  fill: var(--line);
+  stroke: none;
+}
+
+.junction.brass {
+  fill: var(--brass);
+}
+
+.junction.fluid {
+  fill: var(--fluid);
+}
+
+.junction.warn {
+  fill: var(--warn);
+}
+
 .hitArea {
   stroke: transparent;
   stroke-width: 14;
@@ -40,7 +59,19 @@
   border: 1px solid var(--line);
   border-radius: var(--radius);
   color: var(--brass);
-  pointer-events: none;
+  /* React Flow's label layer ignores the pointer; the label opts back in. */
+  pointer-events: all;
+  cursor: pointer;
+}
+
+.label:hover {
+  border-color: var(--brass);
+}
+
+.line {
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
 
 .parallel {

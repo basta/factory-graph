@@ -9,7 +9,8 @@ import {
   makeSourceNode,
   useGraphStore,
 } from './graph/store.ts';
-import { emptyGraph, type GraphNode, type Position } from './graph/types.ts';
+import { emptyGraph, type GraphNode, type Position, type RecipeNode } from './graph/types.ts';
+import { defaultTransport, lastSettings, rememberSettings, settingsOf } from './graph/settings.ts';
 import { createAutosave, flushOnHide } from './graph/persist.ts';
 import {
   createPlan,
@@ -25,13 +26,28 @@ import {
 import { clearLocationHash, documentFromLocation, shareUrl } from './graph/url.ts';
 import { exportDocument, importDocument } from './graph/file.ts';
 import { autoLayout } from './graph/layout.ts';
+import { planExpand } from './graph/expand.ts';
+import { tierChanges } from './graph/tiers.ts';
 import { GraphParseError, type GraphDocument } from './graph/serialize.ts';
 import { Canvas, type DropSearch } from './canvas/Canvas.tsx';
 import { nodeShape } from './canvas/geometry.ts';
-import { Header } from './ui/Header.tsx';
+import { Header, type View } from './ui/Header.tsx';
+import { BuildView } from './build/BuildView.tsx';
+import { useBuildWorld } from './build/useSimulation.ts';
+import { layoutRow, rowOrigin } from './build/fromGraph.ts';
+import { layoutPlan } from './build/wholePlan.ts';
 import { Inspector } from './ui/Inspector.tsx';
 import { Search, type SearchChoice, type SearchIntent } from './ui/Search.tsx';
+import { useFocusRequest } from './ui/focus.ts';
 import { ShortcutsOverlay } from './ui/ShortcutsOverlay.tsx';
+import { WhatsNew } from './ui/WhatsNew.tsx';
+import {
+  CHANGELOG,
+  markAllSeen,
+  readLastSeen,
+  unseenEntries,
+  type ChangelogEntry,
+} from './ui/changelog.ts';
 import { Toast, type ToastAction } from './ui/Toast.tsx';
 import { isTyping, viewportDuration } from './ui/keys.ts';
 import { solve } from './solver/index.ts';
@@ -40,6 +56,9 @@ import styles from './App.module.css';
 
 export function App(): JSX.Element {
   const [index, setIndex] = useState<GameIndex | null>(null);
+  // Someone with saved plans has been here before, so what changed since is
+  // news to them; a first visit has nothing to compare against.
+  const [returning, setReturning] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -50,8 +69,9 @@ export function App(): JSX.Element {
         // Restore before the canvas first renders, so React Flow's own
         // `fitView` has a graph to frame.
         const fromLink = documentFromLocation();
+        setReturning(readIndex().plans.length > 0);
         const { id, doc } = openingPlan(fromLink, () => ({
-          graph: emptyGraph(loaded.data.id),
+          graph: emptyGraph(loaded.data.id, lastSettings()),
           projectName: 'Untitled factory',
         }));
         // The link has been saved as its own plan by now, so the hash has done
@@ -84,7 +104,7 @@ export function App(): JSX.Element {
   return (
     <GameDataProvider value={index}>
       <ReactFlowProvider>
-        <Editor index={index} />
+        <Editor index={index} returning={returning} />
       </ReactFlowProvider>
     </GameDataProvider>
   );
@@ -106,11 +126,25 @@ const CLOSED: SearchState = {
   connectTo: null,
 };
 
-function Editor({ index }: { index: GameIndex }): JSX.Element {
+function Editor({ index, returning }: { index: GameIndex; returning: boolean }): JSX.Element {
+  // What shipped since the last visit, shown once. A first visit is marked
+  // as having seen everything, so the popup only ever reports changes.
+  const [whatsNew, setWhatsNew] = useState<readonly ChangelogEntry[]>(() => {
+    if (!returning) {
+      markAllSeen();
+      return [];
+    }
+    return unseenEntries(CHANGELOG, readLastSeen());
+  });
+  const closeWhatsNew = useCallback(() => {
+    markAllSeen();
+    setWhatsNew([]);
+  }, []);
   const flow = useReactFlow();
   const [helpOpen, setHelpOpen] = useState(false);
   const [search, setSearch] = useState<SearchState>(CLOSED);
   const [plansOpen, setPlansOpen] = useState(false);
+  const [view, setView] = useState<View>('graph');
   const [toast, setToast] = useState<{ message: string; action?: ToastAction } | null>(null);
   const say = useCallback((message: string, action?: ToastAction) => {
     // Returning the same object makes React bail out, so a message repeated
@@ -127,6 +161,7 @@ function Editor({ index }: { index: GameIndex }): JSX.Element {
   const activeId = useGraphStore((state) => state.activeId);
   const plans = useGraphStore((state) => state.plans);
   const projectName = useGraphStore((state) => state.projectName);
+  const build = useGraphStore((state) => state.build);
   const selection = useGraphStore((state) => state.selection);
   const selectedEdges = useGraphStore((state) => state.selectedEdges);
   const store = useGraphStore;
@@ -138,6 +173,9 @@ function Editor({ index }: { index: GameIndex }): JSX.Element {
   // positions — from re-solving on every pointer move.
   const { nodes, edges } = graph;
   const result = useMemo(() => solve({ nodes, edges }, index), [nodes, edges, index]);
+  // The build's simulation lives here rather than in the build view, so it
+  // is still where it was left after a look at the graph.
+  const buildWorld = useBuildWorld(build, index, activeId);
 
   // --- autosave ------------------------------------------------------------
   // The document is already in the store by the time this component mounts.
@@ -170,8 +208,8 @@ function Editor({ index }: { index: GameIndex }): JSX.Element {
 
   useEffect(() => {
     if (activeId === null) return;
-    autosave.schedule({ id: activeId, doc: { graph, projectName } });
-  }, [activeId, autosave, graph, projectName]);
+    autosave.schedule({ id: activeId, doc: { graph, projectName, build } });
+  }, [activeId, autosave, build, graph, projectName]);
 
   // --- plans ---------------------------------------------------------------
   /** Switches the canvas to `doc`, which must already be saved under `id`. */
@@ -208,7 +246,7 @@ function Editor({ index }: { index: GameIndex }): JSX.Element {
   const onNewPlan = useCallback(() => {
     autosave.flush();
     const doc: GraphDocument = {
-      graph: emptyGraph(index.data.id),
+      graph: emptyGraph(index.data.id, lastSettings()),
       projectName: 'Untitled factory',
     };
     showPlan(createPlan(doc), doc, false);
@@ -237,7 +275,7 @@ function Editor({ index }: { index: GameIndex }): JSX.Element {
           showPlan(neighbour.id, doc, true);
         } else {
           const fresh: GraphDocument = {
-            graph: emptyGraph(index.data.id),
+            graph: emptyGraph(index.data.id, lastSettings()),
             projectName: 'Untitled factory',
           };
           showPlan(createPlan(fresh), fresh, false);
@@ -305,14 +343,129 @@ function Editor({ index }: { index: GameIndex }): JSX.Element {
     openSearchAtScreen(screen, { kind: 'anything' }, null);
   }, [openSearchAtScreen]);
 
+  /**
+   * B: the selected recipe node laid out as a row in the build view, to the
+   * right of anything already built, and the view switched to show it.
+   */
+  const onBuildThis = useCallback(() => {
+    const actions = store.getState();
+    const node = actions.graph.nodes.find(
+      (candidate): candidate is RecipeNode =>
+        candidate.kind === 'recipe' && actions.selection.includes(candidate.id),
+    );
+    if (!node) {
+      say('Select a recipe node to lay out.');
+      return;
+    }
+    const row = layoutRow(index, node, result, {
+      beltId: settingsOf(actions.graph).beltId,
+      hands: actions.build.hands,
+      origin: rowOrigin(actions.build.entities),
+    });
+    if (!row.ok) {
+      say(row.reason);
+      return;
+    }
+    actions.beginBatch();
+    const placed = actions.placeEntities(row.entities);
+    actions.endBatch();
+    actions.setBuildSelection(placed.filter((id): id is string => id !== null));
+    setView('build');
+    const machine = index.machines.get(row.machineId)?.name.toLowerCase() ?? 'machine';
+    const what = `${row.machines} × ${machine}${row.blocks > 1 ? `, one of ${row.blocks} blocks` : ''}`;
+    say([`Laid out ${what}. Press P to run it.`, ...row.notes].join(' '));
+  }, [index, result, say, store]);
+
+  /**
+   * Shift B: every recipe in the plan laid out as stacked rows joined by
+   * routed belts, to the right of anything already built.
+   */
+  const onBuildPlan = useCallback(() => {
+    const actions = store.getState();
+    const layout = layoutPlan(index, actions.graph, result, {
+      beltId: settingsOf(actions.graph).beltId,
+      hands: actions.build.hands,
+      origin: rowOrigin(actions.build.entities, 14),
+      existing: actions.build.entities,
+    });
+    if ('ok' in layout) {
+      say(layout.reason);
+      return;
+    }
+    actions.beginBatch();
+    const placed = actions.placeEntities(layout.entities);
+    actions.endBatch();
+    actions.setBuildSelection(placed.filter((id): id is string => id !== null));
+    setView('build');
+    const rows = layout.rows === 1 ? '1 row' : `${layout.rows} rows`;
+    const belts =
+      layout.routed === 0 ? '' : ` joined by ${layout.routed === 1 ? '1 belt' : `${layout.routed} belts`}`;
+    // A whole plan can have a note per row; the first two say enough.
+    const extra = layout.notes.length > 2 ? ` And ${layout.notes.length - 2} more notes.` : '';
+    say([`Laid out ${rows}${belts}. Press P to run it.`, ...layout.notes.slice(0, 2)].join(' ') + extra);
+  }, [index, result, say, store]);
+
+  /**
+   * E: a producer for every unconnected input of the selection. The new nodes
+   * become the selection, so pressing E again builds the next step up. An
+   * input with a real choice of recipe opens the search for that one.
+   */
+  const onExpand = useCallback(() => {
+    const actions = store.getState();
+    const settings = settingsOf(actions.graph);
+    const plan = planExpand(actions.graph, index, settings, actions.selection);
+    if (plan.nodes.length === 0 && plan.choices.length === 0) {
+      say(
+        actions.selection.length === 0
+          ? 'Select a node to expand.'
+          : 'Nothing to expand: every input is connected or on the bus.',
+      );
+      return;
+    }
+    actions.beginBatch();
+    actions.addNodes(plan.nodes);
+    for (const edge of plan.edges) actions.addEdge(edge);
+    actions.endBatch();
+    if (plan.nodes.length > 0) actions.setSelection(plan.nodes.map((entry) => entry.node.id), []);
+
+    const choice = plan.choices[0];
+    if (choice) {
+      const node = actions.graph.nodes.find((candidate) => candidate.id === choice.nodeId);
+      const width = node ? nodeShape(node, index).width : 0;
+      setSearch({
+        open: true,
+        intent: { kind: 'produces', itemId: choice.itemId, nodeId: choice.nodeId },
+        // `onChoose` centres the new node on this point; aim it at the slot
+        // Expand left for it.
+        at: { x: choice.position.x + width / 2, y: choice.position.y + 20 },
+        connectTo: { nodeId: choice.nodeId, itemId: choice.itemId, fromSide: 'in' },
+      });
+      if (plan.choices.length > 1) {
+        const rest = plan.choices
+          .slice(1)
+          .map((entry) => (index.items.get(entry.itemId)?.name ?? entry.itemId).toLowerCase());
+        say(`Also needs a recipe chosen: ${rest.join(', ')}.`);
+      }
+    }
+  }, [index, say, store]);
+
+  const openBusSearch = useCallback(() => {
+    const rect = document.querySelector('.react-flow')?.getBoundingClientRect();
+    openSearchAtScreen(
+      { x: (rect?.left ?? 0) + 200, y: (rect?.top ?? 0) + 120 },
+      { kind: 'bus' },
+      null,
+    );
+  }, [openSearchAtScreen]);
+
   const onDropSearch = useCallback(
     (drop: DropSearch) => {
       openSearchAtScreen(
         drop.screen,
         // Dragging out of an output looks for something that consumes it.
         drop.fromSide === 'out'
-          ? { kind: 'consumes', itemId: drop.itemId }
-          : { kind: 'produces', itemId: drop.itemId },
+          ? { kind: 'consumes', itemId: drop.itemId, nodeId: drop.nodeId }
+          : { kind: 'produces', itemId: drop.itemId, nodeId: drop.nodeId },
         { nodeId: drop.nodeId, itemId: drop.itemId, fromSide: drop.fromSide },
       );
     },
@@ -321,13 +474,42 @@ function Editor({ index }: { index: GameIndex }): JSX.Element {
 
   const onChoose = useCallback(
     (choice: SearchChoice) => {
+      const settings = settingsOf(store.getState().graph);
+      if (choice.kind === 'bus') {
+        if (!settings.bus.includes(choice.itemId)) {
+          const next = { ...settings, bus: [...settings.bus, choice.itemId] };
+          store.getState().setSettings(next, index);
+          rememberSettings(next);
+        }
+        setSearch(CLOSED);
+        return;
+      }
+      if (choice.kind === 'existing') {
+        // Join the dragged port to a node that is already there.
+        const link = search.connectTo;
+        if (link) {
+          const transport = defaultTransport(index, settings, link.itemId);
+          store.getState().addEdge(
+            link.fromSide === 'out'
+              ? { from: link.nodeId, fromPort: link.itemId, to: choice.nodeId, toPort: link.itemId, transport }
+              : { from: choice.nodeId, fromPort: link.itemId, to: link.nodeId, toPort: link.itemId, transport },
+          );
+        }
+        setSearch(CLOSED);
+        return;
+      }
       const node: GraphNode | null =
         choice.kind === 'recipe'
-          ? makeRecipeNode(index, choice.recipeId)
+          ? makeRecipeNode(index, choice.recipeId, settings)
           : choice.kind === 'source'
             ? makeSourceNode(choice.itemId)
             : choice.kind === 'sink'
-              ? makeSinkNode(choice.itemId)
+              ? makeSinkNode(
+                  choice.itemId,
+                  // From the open search a sink is the goal, so it starts
+                  // fixed; from a dragged output it is just where that goes.
+                  search.intent.kind === 'anything' ? { type: 'rate', perSec: 1 } : undefined,
+                )
               : makeNoteNode();
       if (!node) {
         say('That recipe has no machine that can make it.');
@@ -344,23 +526,31 @@ function Editor({ index }: { index: GameIndex }): JSX.Element {
       actions.addNode(node, at);
       const link = search.connectTo;
       if (link) {
+        const transport = defaultTransport(index, settings, link.itemId);
         actions.addEdge(
           link.fromSide === 'out'
-            ? { from: link.nodeId, fromPort: link.itemId, to: node.id, toPort: link.itemId, transport: null }
-            : { from: node.id, fromPort: link.itemId, to: link.nodeId, toPort: link.itemId, transport: null },
+            ? { from: link.nodeId, fromPort: link.itemId, to: node.id, toPort: link.itemId, transport }
+            : { from: node.id, fromPort: link.itemId, to: link.nodeId, toPort: link.itemId, transport },
         );
       }
       actions.endBatch();
       actions.setSelection([node.id], []);
+      if (node.kind === 'sink' && node.constraint.type === 'rate') {
+        useFocusRequest.getState().request(node.id);
+      }
       setSearch(CLOSED);
     },
-    [index, say, search.at, search.connectTo, store],
+    [index, say, search.at, search.connectTo, search.intent.kind, store],
   );
 
   // --- project actions -----------------------------------------------------
   const onShare = useCallback(() => {
     const actions = store.getState();
-    const url = shareUrl({ graph: actions.graph, projectName: actions.projectName });
+    const url = shareUrl({
+      graph: actions.graph,
+      projectName: actions.projectName,
+      build: actions.build,
+    });
     navigator.clipboard
       .writeText(url)
       .then(() => say('Link copied'))
@@ -371,7 +561,11 @@ function Editor({ index }: { index: GameIndex }): JSX.Element {
 
   const onExport = useCallback(() => {
     const actions = store.getState();
-    exportDocument({ graph: actions.graph, projectName: actions.projectName });
+    exportDocument({
+      graph: actions.graph,
+      projectName: actions.projectName,
+      build: actions.build,
+    });
   }, [store]);
 
   const onImport = useCallback(() => {
@@ -408,11 +602,15 @@ function Editor({ index }: { index: GameIndex }): JSX.Element {
       const actions = store.getState();
       const control = event.ctrlKey || event.metaKey;
 
+      // The popup handles its own Escape and owns the keyboard while open.
+      if (whatsNew.length > 0) return;
+
       if (event.key === 'Escape') {
         if (search.open) setSearch(CLOSED);
         else if (plansOpen) onPlansOpenChange(false);
         else if (helpOpen) setHelpOpen(false);
-        else actions.setSelection([], []);
+        // The build view has its own idea of what Escape clears.
+        else if (view === 'graph') actions.setSelection([], []);
         return;
       }
 
@@ -425,10 +623,30 @@ function Editor({ index }: { index: GameIndex }): JSX.Element {
         if (event.key.toLowerCase() === 's') onShare();
         else if (event.key.toLowerCase() === 'e') onExport();
         else if (event.key.toLowerCase() === 'i') onImport();
-        else onLayout();
+        else if (view === 'graph') onLayout();
         return;
       }
       if (typing) return;
+
+      // The build view handles its own keys; only the document-wide ones
+      // are shared — help, the plan list, and the one undo stack.
+      if (view === 'build') {
+        if (event.key === '?') {
+          event.preventDefault();
+          setHelpOpen((open) => !open);
+        } else if (control && event.key.toLowerCase() === 'p') {
+          event.preventDefault();
+          onPlansOpenChange(!plansOpen);
+        } else if (control && event.key.toLowerCase() === 'z') {
+          event.preventDefault();
+          if (event.shiftKey) actions.redo();
+          else actions.undo();
+        } else if (control && event.key.toLowerCase() === 'y') {
+          event.preventDefault();
+          actions.redo();
+        }
+        return;
+      }
 
       if (event.key === '?') {
         event.preventDefault();
@@ -467,6 +685,30 @@ function Editor({ index }: { index: GameIndex }): JSX.Element {
         actions.removeNodes(actions.selection);
         actions.endBatch();
         actions.setSelection([], []);
+      } else if (/^[0-9]$/.test(event.key) && !control && !event.altKey) {
+        // Belt tier on selected connections, machine tier on selected nodes.
+        const changes = tierChanges(
+          actions.graph,
+          index,
+          actions.selection,
+          actions.selectedEdges,
+          Number(event.key),
+        );
+        if (changes.transports.length === 0 && changes.machines.length === 0) return;
+        event.preventDefault();
+        actions.beginBatch();
+        for (const [id, transport] of changes.transports) actions.setTransport(id, transport);
+        for (const [id, node] of changes.machines) {
+          actions.updateRecipeNode(id, { machineId: node.machineId, modules: node.modules });
+        }
+        actions.endBatch();
+      } else if (event.key.toLowerCase() === 'e' && !control && !event.altKey) {
+        event.preventDefault();
+        onExpand();
+      } else if (event.key.toLowerCase() === 'b' && !control && !event.altKey) {
+        event.preventDefault();
+        if (event.shiftKey) onBuildPlan();
+        else onBuildThis();
       } else if (event.key.toLowerCase() === 'f' && !control) {
         // Pin or unpin every selected recipe node at its solved count.
         const nodes = actions.graph.nodes.filter((node) => actions.selection.includes(node.id));
@@ -494,6 +736,10 @@ function Editor({ index }: { index: GameIndex }): JSX.Element {
   }, [
     flow,
     helpOpen,
+    index,
+    onExpand,
+    onBuildThis,
+    onBuildPlan,
     onExport,
     onImport,
     onLayout,
@@ -503,6 +749,8 @@ function Editor({ index }: { index: GameIndex }): JSX.Element {
     plansOpen,
     search.open,
     store,
+    view,
+    whatsNew,
   ]);
 
   const past = useGraphStore((state) => state.history.past.length);
@@ -511,6 +759,8 @@ function Editor({ index }: { index: GameIndex }): JSX.Element {
   return (
     <div className={styles.app}>
       <Header
+        view={view}
+        onViewChange={setView}
         projectName={projectName}
         onProjectNameChange={store.getState().setProjectName}
         plans={plans}
@@ -532,26 +782,51 @@ function Editor({ index }: { index: GameIndex }): JSX.Element {
         onHelp={() => setHelpOpen(true)}
       />
       <div className={styles.body}>
-        <SolveProvider value={result}>
-          <Canvas
-            empty={graph.nodes.length === 0}
-            onAddAt={(screen) => openSearchAtScreen(screen, { kind: 'anything' }, null)}
-            onDropSearch={onDropSearch}
+        {view === 'graph' ? (
+          <SolveProvider value={result}>
+            <Canvas
+              empty={graph.nodes.length === 0}
+              onAddAt={(screen) => openSearchAtScreen(screen, { kind: 'anything' }, null)}
+              onDropSearch={onDropSearch}
+              onAddBusItem={openBusSearch}
+              onHideHints={() => say('Key hints hidden. Turn them back on from the shortcuts list (?).')}
+            />
+            <Inspector
+              selection={selection}
+              selectedEdges={selectedEdges}
+              onClose={() => store.getState().setSelection([], [])}
+              onExpand={onExpand}
+              onBuildThis={onBuildThis}
+            />
+          </SolveProvider>
+        ) : (
+          <BuildView
+            onBuildPlan={onBuildPlan}
+            buildWorld={buildWorld}
+            result={result}
+            keysBlocked={helpOpen || plansOpen || whatsNew.length > 0}
+            say={say}
           />
-          <Inspector
-            selection={selection}
-            selectedEdges={selectedEdges}
-            onClose={() => store.getState().setSelection([], [])}
-          />
-        </SolveProvider>
+        )}
       </div>
-      <Search
-        open={search.open}
-        intent={search.intent}
-        onClose={() => setSearch(CLOSED)}
-        onChoose={onChoose}
+      {view === 'graph' ? (
+        <Search
+          open={search.open}
+          intent={search.intent}
+          onClose={() => setSearch(CLOSED)}
+          onChoose={onChoose}
+        />
+      ) : null}
+      <ShortcutsOverlay
+        open={helpOpen}
+        view={view}
+        onClose={() => setHelpOpen(false)}
+        onWhatsNew={() => {
+          setHelpOpen(false);
+          setWhatsNew(CHANGELOG.slice(0, 3));
+        }}
       />
-      <ShortcutsOverlay open={helpOpen} onClose={() => setHelpOpen(false)} />
+      <WhatsNew entries={whatsNew} onClose={closeWhatsNew} />
       <Toast
         message={toast?.message ?? null}
         action={toast?.action ?? null}

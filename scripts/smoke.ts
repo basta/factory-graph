@@ -624,6 +624,294 @@ async function main(): Promise<void> {
       state.plans.map((plan) => plan.name).join(', '),
     );
 
+    // --- planning back from a sink, by keyboard --------------------------------
+    await page.keyboard.press('Control+p');
+    await page.waitForTimeout(250);
+    await page.getByRole('menuitem', { name: 'New plan' }).click();
+    await page.waitForTimeout(400);
+
+    const graphOf = async () =>
+      page.evaluate(() => {
+        const store = (window as unknown as { __factoryGraph: { getState: () => unknown } })
+          .__factoryGraph;
+        const { graph, selection } = store.getState() as {
+          graph: {
+            nodes: { id: string; kind: string; recipeId?: string; itemId?: string; machineId?: string; constraint: unknown }[];
+            edges: { id: string; from: string; to: string; fromPort: string; transport: { kind: string; beltId?: string } | null }[];
+          };
+          selection: string[];
+        };
+        return { nodes: graph.nodes, edges: graph.edges, selection };
+      });
+
+    await page.keyboard.press('Control+k');
+    await page.waitForTimeout(150);
+    await page.keyboard.type('electronic circuit', { delay: 8 });
+    await page.waitForTimeout(150);
+    await page.keyboard.press('Shift+Enter');
+    await page.waitForTimeout(300);
+    const focused = await page.evaluate(() => document.activeElement?.getAttribute('aria-label'));
+    check('Shift Enter adds a sink with its rate field ready', focused === 'Items/s', String(focused));
+    await page.keyboard.type('45');
+    await page.keyboard.press('Enter');
+    await page.waitForTimeout(200);
+    let plan = await graphOf();
+    check(
+      'and typing sets the rate',
+      plan.nodes.length === 1 &&
+        plan.nodes[0]!.kind === 'sink' &&
+        JSON.stringify(plan.nodes[0]!.constraint) === '{"type":"rate","perSec":45}',
+      JSON.stringify(plan.nodes[0]?.constraint),
+    );
+
+    await page.keyboard.press('e');
+    await page.waitForTimeout(250);
+    await page.keyboard.press('e');
+    await page.waitForTimeout(250);
+    plan = await graphOf();
+    const built = plan.nodes.filter((node) => node.kind === 'recipe');
+    check(
+      'E twice builds the chain on the plan machine, stopping at the bus',
+      built.map((node) => node.recipeId).sort().join() === 'copper-cable,electronic-circuit' &&
+        built.every((node) => node.machineId === 'assembling-machine-2'),
+      built.map((node) => `${node.recipeId}@${node.machineId}`).join(', '),
+    );
+    check(
+      "and every connection starts on the plan's belt",
+      plan.edges.length === 2 && plan.edges.every((edge) => edge.transport?.beltId === 'transport-belt'),
+      JSON.stringify(plan.edges.map((edge) => edge.transport)),
+    );
+
+    const hints = page.locator('[aria-label="Keys for the selection"]');
+    check(
+      'the key hints teach E while a recipe is selected',
+      /build inputs/.test(await hints.innerText()),
+      (await hints.innerText()).replace(/\s+/g, ' '),
+    );
+
+    await page.getByRole('button', { name: 'Fast transport belt' }).click();
+    await page.waitForTimeout(250);
+    plan = await graphOf();
+    check(
+      'one click in the plan bar moves every connection to red belts',
+      plan.edges.every((edge) => edge.transport?.beltId === 'fast-transport-belt'),
+      JSON.stringify(plan.edges.map((edge) => edge.transport?.beltId)),
+    );
+
+    const cableEdge = plan.edges.find((edge) => edge.fromPort === 'copper-cable')!;
+    await page.click(`.react-flow__edge[data-id="${cableEdge.id}"] path:last-of-type`, { force: true });
+    await page.waitForTimeout(150);
+    await page.keyboard.press('3');
+    await page.waitForTimeout(200);
+    plan = await graphOf();
+    check(
+      'and the belt keys while a connection is',
+      /belt tier/.test(await hints.innerText()),
+      (await hints.innerText()).replace(/\s+/g, ' '),
+    );
+    check(
+      '3 puts the selected connection on blue belt',
+      plan.edges.find((edge) => edge.id === cableEdge.id)?.transport?.beltId === 'express-transport-belt',
+      JSON.stringify(plan.edges.find((edge) => edge.id === cableEdge.id)?.transport),
+    );
+
+    await page.click('.react-flow__pane', { position: { x: 900, y: 700 } });
+    await page.waitForTimeout(150);
+    const firstLabel = await page.locator('.react-flow__edgelabel-renderer > div').first().boundingBox();
+    // A corner of the label, clear of the line that runs through its middle.
+    await page.mouse.click(firstLabel!.x + 5, firstLabel!.y + firstLabel!.height - 3);
+    await page.waitForTimeout(150);
+    check(
+      'clicking a connection label selects the connection',
+      (await snapshot(page)).selectedEdges.length === 1,
+      JSON.stringify((await snapshot(page)).selectedEdges),
+    );
+
+    const sinkId = plan.nodes.find((node) => node.kind === 'sink')!.id;
+    await page.dblclick(`.react-flow__node[data-id="${sinkId}"] [title*="Double-click"]`);
+    await page.waitForTimeout(150);
+    await page.keyboard.press('Control+a');
+    await page.keyboard.type('30');
+    await page.keyboard.press('Enter');
+    await page.waitForTimeout(200);
+    plan = await graphOf();
+    check(
+      'double-clicking a rate edits it in place',
+      JSON.stringify(plan.nodes.find((node) => node.id === sinkId)?.constraint) ===
+        '{"type":"rate","perSec":30}',
+      JSON.stringify(plan.nodes.find((node) => node.id === sinkId)?.constraint),
+    );
+
+    await page.getByRole('button', { name: 'Hide key hints' }).click();
+    await page.waitForTimeout(150);
+    check('the key hints can be hidden', (await hints.count()) === 0);
+    await page.keyboard.press('?');
+    await page.waitForTimeout(200);
+    await page.getByRole('checkbox', { name: /Show the keys for the selection/ }).check();
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(150);
+    check('and brought back from the shortcuts list', (await hints.count()) === 1);
+
+    // --- the build view --------------------------------------------------------
+    // A fresh plan, so the grid starts empty with tile 0,0 at the centre at
+    // zoom 1, and every tile can be aimed at from the canvas box alone.
+    await page.keyboard.press('Control+p');
+    await page.waitForTimeout(250);
+    await page.getByRole('menuitem', { name: 'New plan' }).click();
+    await page.waitForTimeout(400);
+    await page.getByRole('tab', { name: 'Build' }).click();
+    await page.waitForTimeout(400);
+
+    const grid = await page.getByTestId('build-canvas').boundingBox();
+    if (!grid) throw new Error('no build canvas');
+    const tile = (x: number, y: number): { x: number; y: number } => ({
+      x: grid.x + grid.width / 2 + x * 32 + 16,
+      y: grid.y + grid.height / 2 + y * 32 + 16,
+    });
+    const build = (): Promise<{ kinds: string[]; undoDepth: number; selected: number }> =>
+      page.evaluate(() => {
+        const store = (window as unknown as { __factoryGraph: { getState: () => unknown } })
+          .__factoryGraph;
+        const state = store.getState() as {
+          build: { entities: { kind: string }[] };
+          history: { past: unknown[] };
+          buildSelection: string[];
+        };
+        return {
+          kinds: state.build.entities.map((entity) => entity.kind),
+          undoDepth: state.history.past.length,
+          selected: state.buildSelection.length,
+        };
+      });
+
+    // Iron in from a source, along a belt, into an assembler, gears out to a sink.
+    await page.keyboard.press('5');
+    await page.keyboard.type('iron plate', { delay: 8 });
+    await page.keyboard.press('Enter');
+    await page.mouse.click(tile(-4, 0).x, tile(-4, 0).y);
+    const beforeBelt = await build();
+    await page.keyboard.press('2');
+    await drag(page, tile(-3, 0), tile(1, 0));
+    let laid = await build();
+    check(
+      'dragging lays a line of belts as one undo step',
+      laid.kinds.filter((kind) => kind === 'belt').length === 5 &&
+        laid.undoDepth === beforeBelt.undoDepth + 1,
+      `${laid.kinds.length} entities, undo ${beforeBelt.undoDepth} -> ${laid.undoDepth}`,
+    );
+    await page.keyboard.press('3');
+    await page.keyboard.press('r');
+    await page.mouse.click(tile(-1, 1).x, tile(-1, 1).y);
+    await page.mouse.click(tile(-1, 5).x, tile(-1, 5).y);
+    await page.keyboard.press('4');
+    await page.keyboard.type('iron gear', { delay: 8 });
+    await page.keyboard.press('Enter');
+    await page.mouse.click(tile(-1, 3).x, tile(-1, 3).y);
+    await page.keyboard.press('6');
+    await page.mouse.click(tile(-1, 6).x, tile(-1, 6).y);
+    await page.keyboard.press('1');
+    laid = await build();
+    check(
+      'source, belts, inserters, machine and sink all placed',
+      ['source', 'belt', 'inserter', 'machine', 'sink'].every((kind) => laid.kinds.includes(kind)) &&
+        laid.kinds.length === 10,
+      laid.kinds.join(' '),
+    );
+
+    await page.getByRole('radio', { name: '64×' }).click();
+    await page.getByRole('button', { name: /^Play/ }).click();
+    await page.waitForTimeout(1500);
+    await page.getByRole('button', { name: /^Pause/ }).click();
+    const report = (await page.locator('aside[aria-label="Build inspector"]').innerText()).split('\n');
+    const gears = report.findIndex((line) => line.trim() === 'Iron gear wheel');
+    check(
+      'running it delivers gears to the sink',
+      gears !== -1 && /[1-9]/.test(report[gears + 1] ?? ''),
+      report.slice(0, 12).join(' / '),
+    );
+
+    // Right-click removes, as it mines in the game.
+    await page.mouse.click(tile(-1, 6).x, tile(-1, 6).y, { button: 'right' });
+    check('right-click removes an entity', (await build()).kinds.length === 9);
+    await page.keyboard.press('Control+z');
+
+    // Copy the whole cell and stamp a second one beside it.
+    await page.keyboard.press('Control+a');
+    await page.keyboard.press('Control+c');
+    await page.keyboard.press('Control+v');
+    await page.mouse.click(tile(8, 3).x, tile(8, 3).y);
+    await page.keyboard.press('Escape');
+    check('a copied cell pastes as a second one', (await build()).kinds.length === 20);
+
+    // A trip to the graph and back keeps the simulation where it was.
+    const clock = page.getByLabel('Simulated time');
+    const clockBefore = await clock.innerText();
+    await page.getByRole('tab', { name: 'Graph' }).click();
+    await page.waitForTimeout(300);
+    await page.getByRole('tab', { name: 'Build' }).click();
+    await page.waitForTimeout(300);
+    check(
+      'switching views keeps the simulation clock',
+      (await clock.innerText()) === clockBefore && clockBefore !== '0:00',
+      clockBefore,
+    );
+
+    // B lays a selected recipe out as a row in the build view.
+    await page.getByRole('tab', { name: 'Graph' }).click();
+    await page.waitForTimeout(300);
+    const beforeRow = (await build()).kinds.length;
+    await page.keyboard.press('Control+k');
+    await page.waitForTimeout(150);
+    await page.keyboard.type('iron gear wheel', { delay: 8 });
+    await page.waitForTimeout(150);
+    await page.keyboard.press('Enter');
+    await page.waitForTimeout(300);
+    await page.keyboard.press('b');
+    await page.waitForTimeout(500);
+    const row = await build();
+    check(
+      'B lays the selected recipe out in the build view',
+      row.kinds.length > beforeRow &&
+        row.kinds.includes('machine') &&
+        (await page.getByRole('tab', { name: 'Build' }).getAttribute('aria-selected')) === 'true',
+      `${beforeRow} -> ${row.kinds.length}`,
+    );
+    check('and selects the new row', row.selected === row.kinds.length - beforeRow, `${row.selected} selected`);
+
+    // Shift B lays out the whole plan: pin the gear node so it has a rate.
+    await page.getByRole('tab', { name: 'Graph' }).click();
+    await page.waitForTimeout(300);
+    await page.keyboard.press('f');
+    await page.waitForTimeout(200);
+    await page.keyboard.press('Shift+B');
+    await page.waitForTimeout(800);
+    const whole = await build();
+    check(
+      'Shift B lays out the whole plan',
+      whole.kinds.length > row.kinds.length &&
+        (await page.getByRole('tab', { name: 'Build' }).getAttribute('aria-selected')) === 'true',
+      `${row.kinds.length} -> ${whole.kinds.length}`,
+    );
+    await page.getByRole('tab', { name: 'Graph' }).click();
+    await page.waitForTimeout(300);
+
+    // --- what's new -----------------------------------------------------------
+    // A first visit marked everything seen, so nothing has popped up so far.
+    // Forgetting that is what a returning visitor after a deploy looks like.
+    check('no what’s-new popup on a first visit', (await page.getByRole('dialog', { name: 'What\'s new' }).count()) === 0);
+    await page.evaluate(() => {
+      for (const key of Object.keys(localStorage)) if (key.endsWith('seen-changelog')) localStorage.removeItem(key);
+    });
+    await page.reload();
+    await page.waitForTimeout(800);
+    const news = page.getByRole('dialog', { name: 'What\'s new' });
+    check('a returning visitor sees what is new', (await news.count()) === 1);
+    await news.getByRole('button', { name: 'Got it' }).click();
+    await page.waitForTimeout(200);
+    await page.reload();
+    await page.waitForTimeout(800);
+    check('and only once', (await page.getByRole('dialog', { name: 'What\'s new' }).count()) === 0);
+
     check('no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
 
     // --- reduced motion ------------------------------------------------------

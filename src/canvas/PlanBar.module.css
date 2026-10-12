@@ -1,0 +1,100 @@
+/* Top-left of the canvas, the corner nothing else uses. One panel, groups
+   split by hairlines, the same framing as the zoom controls. */
+.bar {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  max-width: calc(100% - 20px);
+  overflow-x: auto;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+
+.group {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 2px;
+  padding: 3px 5px;
+}
+
+.group + .group {
+  border-left: 1px solid var(--line);
+}
+
+/* Unchosen options recede so the chosen one is what the eye finds. */
+.choice {
+  display: grid;
+  place-items: center;
+  min-width: 24px;
+  height: 24px;
+  padding: 0 4px;
+  border-radius: 2px;
+  color: var(--ink-muted);
+  opacity: 0.45;
+}
+
+.choice:hover {
+  opacity: 1;
+}
+
+.on {
+  background: var(--panel-raised);
+  color: var(--ink);
+  opacity: 1;
+}
+
+.none {
+  width: 10px;
+  height: 1px;
+  background: currentColor;
+}
+
+.label {
+  margin: 0 3px 0 2px;
+  color: var(--ink-muted);
+}
+
+.item {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 2px;
+}
+
+.item:hover {
+  background: var(--panel-raised);
+}
+
+/* A plus drawn from two hairlines, the weight of the other glyphs here. */
+.plus {
+  position: relative;
+  width: 10px;
+  height: 10px;
+}
+
+.plus::before,
+.plus::after {
+  content: '';
+  position: absolute;
+  background: var(--ink-muted);
+}
+
+.plus::before {
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 1px;
+}
+
+.plus::after {
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 1px;
+}
