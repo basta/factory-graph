@@ -38,6 +38,7 @@ export const SHORTCUTS: ShortcutGroup[] = [
       { keys: [], then: 'Double-click the canvas', description: 'Add a node where you clicked' },
       { keys: [], then: 'Drag from a port', description: 'Connect, or search for the next step' },
       { keys: ['E'], description: 'Expand: build a producer for every open input' },
+      { keys: ['B'], description: 'Lay the selected recipe out in the build view, to test it' },
       { keys: ['Ctrl', 'K'], then: 'then "note"', description: 'Add a note to the canvas' },
       { keys: ['Ctrl', 'D'], description: 'Duplicate selection' },
       { keys: ['Delete'], description: 'Delete selection' },

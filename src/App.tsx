@@ -9,7 +9,7 @@ import {
   makeSourceNode,
   useGraphStore,
 } from './graph/store.ts';
-import { emptyGraph, type GraphNode, type Position } from './graph/types.ts';
+import { emptyGraph, type GraphNode, type Position, type RecipeNode } from './graph/types.ts';
 import { defaultTransport, lastSettings, rememberSettings, settingsOf } from './graph/settings.ts';
 import { createAutosave, flushOnHide } from './graph/persist.ts';
 import {
@@ -34,6 +34,7 @@ import { nodeShape } from './canvas/geometry.ts';
 import { Header, type View } from './ui/Header.tsx';
 import { BuildView } from './build/BuildView.tsx';
 import { useBuildWorld } from './build/useSimulation.ts';
+import { layoutRow, rowOrigin } from './build/fromGraph.ts';
 import { Inspector } from './ui/Inspector.tsx';
 import { Search, type SearchChoice, type SearchIntent } from './ui/Search.tsx';
 import { useFocusRequest } from './ui/focus.ts';
@@ -315,6 +316,39 @@ function Editor({ index }: { index: GameIndex }): JSX.Element {
       : { x: window.innerWidth / 2, y: window.innerHeight / 2 };
     openSearchAtScreen(screen, { kind: 'anything' }, null);
   }, [openSearchAtScreen]);
+
+  /**
+   * B: the selected recipe node laid out as a row in the build view, to the
+   * right of anything already built, and the view switched to show it.
+   */
+  const onBuildThis = useCallback(() => {
+    const actions = store.getState();
+    const node = actions.graph.nodes.find(
+      (candidate): candidate is RecipeNode =>
+        candidate.kind === 'recipe' && actions.selection.includes(candidate.id),
+    );
+    if (!node) {
+      say('Select a recipe node to lay out.');
+      return;
+    }
+    const row = layoutRow(index, node, result, {
+      beltId: settingsOf(actions.graph).beltId,
+      hands: actions.build.hands,
+      origin: rowOrigin(actions.build.entities),
+    });
+    if (!row.ok) {
+      say(row.reason);
+      return;
+    }
+    actions.beginBatch();
+    const placed = actions.placeEntities(row.entities);
+    actions.endBatch();
+    actions.setBuildSelection(placed.filter((id): id is string => id !== null));
+    setView('build');
+    const machine = index.machines.get(row.machineId)?.name.toLowerCase() ?? 'machine';
+    const what = `${row.machines} × ${machine}${row.blocks > 1 ? `, one of ${row.blocks} blocks` : ''}`;
+    say([`Laid out ${what}. Press P to run it.`, ...row.notes].join(' '));
+  }, [index, result, say, store]);
 
   /**
    * E: a producer for every unconnected input of the selection. The new nodes
@@ -613,6 +647,9 @@ function Editor({ index }: { index: GameIndex }): JSX.Element {
       } else if (event.key.toLowerCase() === 'e' && !control && !event.altKey) {
         event.preventDefault();
         onExpand();
+      } else if (event.key.toLowerCase() === 'b' && !control && !event.altKey) {
+        event.preventDefault();
+        onBuildThis();
       } else if (event.key.toLowerCase() === 'f' && !control) {
         // Pin or unpin every selected recipe node at its solved count.
         const nodes = actions.graph.nodes.filter((node) => actions.selection.includes(node.id));
@@ -642,6 +679,7 @@ function Editor({ index }: { index: GameIndex }): JSX.Element {
     helpOpen,
     index,
     onExpand,
+    onBuildThis,
     onExport,
     onImport,
     onLayout,
@@ -697,6 +735,7 @@ function Editor({ index }: { index: GameIndex }): JSX.Element {
               selectedEdges={selectedEdges}
               onClose={() => store.getState().setSelection([], [])}
               onExpand={onExpand}
+              onBuildThis={onBuildThis}
             />
           </SolveProvider>
         ) : (

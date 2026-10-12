@@ -855,6 +855,28 @@ async function main(): Promise<void> {
       (await clock.innerText()) === clockBefore && clockBefore !== '0:00',
       clockBefore,
     );
+
+    // B lays a selected recipe out as a row in the build view.
+    await page.getByRole('tab', { name: 'Graph' }).click();
+    await page.waitForTimeout(300);
+    const beforeRow = (await build()).kinds.length;
+    await page.keyboard.press('Control+k');
+    await page.waitForTimeout(150);
+    await page.keyboard.type('iron gear wheel', { delay: 8 });
+    await page.waitForTimeout(150);
+    await page.keyboard.press('Enter');
+    await page.waitForTimeout(300);
+    await page.keyboard.press('b');
+    await page.waitForTimeout(500);
+    const row = await build();
+    check(
+      'B lays the selected recipe out in the build view',
+      row.kinds.length > beforeRow &&
+        row.kinds.includes('machine') &&
+        (await page.getByRole('tab', { name: 'Build' }).getAttribute('aria-selected')) === 'true',
+      `${beforeRow} -> ${row.kinds.length}`,
+    );
+    check('and selects the new row', row.selected === row.kinds.length - beforeRow, `${row.selected} selected`);
     await page.getByRole('tab', { name: 'Graph' }).click();
     await page.waitForTimeout(300);
 

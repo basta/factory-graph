@@ -189,6 +189,15 @@ this layout actually move the items the graph says it should.
   selected it is the test report — output over the last 30 s with the plan's figure
   beside it, input, and each recipe's share of time crafting. With an entity selected it
   is that entity's settings and live state.
+- **Undergrounds and splitters** are shapes of the belt tool, drawn the same way as
+  belts plus one part: a hood over the half that is under the ground, and a bar across
+  a splitter's two halves. An underground with no partner draws its hood edge in
+  `--warn`, because it is a broken line. A splitter's filter sits on the bar in a
+  framed square, so it is never read as an item on the belt.
+- **Lay out in build** (B, or the button beside Build inputs) turns a recipe node into
+  a row: machines side by side, ingredients on one or two belts a lane each, inserters
+  sized to the rate, output to a sink that carries the node's planned rate. It opens
+  the build view framed on the new row and says up front what will not keep up.
 - **Keys follow the game** where it has one: R rotates, Q picks up the tool for what is
   under the pointer, right-click removes, a dragged belt follows the pointer round
   corners. Ctrl C / Ctrl V copy a selection as a stamp, and R turns the stamp.

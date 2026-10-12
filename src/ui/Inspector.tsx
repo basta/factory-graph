@@ -21,6 +21,8 @@ interface Props {
   onClose: () => void;
   /** Expand, the same as pressing E. */
   onExpand: () => void;
+  /** Lay the recipe out in the build view, the same as pressing B. */
+  onBuildThis: () => void;
 }
 
 /**
@@ -28,7 +30,13 @@ interface Props {
  * shows only the fields the selection has in common and applies an edit to
  * every one of them.
  */
-export function Inspector({ selection, selectedEdges, onClose, onExpand }: Props): JSX.Element {
+export function Inspector({
+  selection,
+  selectedEdges,
+  onClose,
+  onExpand,
+  onBuildThis,
+}: Props): JSX.Element {
   const index = useGameData();
   // Select the stable array and narrow it here: a selector that builds a new
   // array on every store read never settles under useSyncExternalStore.
@@ -128,6 +136,11 @@ export function Inspector({ selection, selectedEdges, onClose, onExpand }: Props
                 // needing the button again.
                 <button type="button" className={styles.action} onClick={onExpand}>
                   Build inputs <kbd className={styles.kbd}>E</kbd>
+                </button>
+              ) : null}
+              {recipes.length === 1 && nodes.length === 1 ? (
+                <button type="button" className={styles.action} onClick={onBuildThis}>
+                  Lay out in build <kbd className={styles.kbd}>B</kbd>
                 </button>
               ) : null}
               <button type="button" className={styles.remove} onClick={() => removeNodes(selection)}>

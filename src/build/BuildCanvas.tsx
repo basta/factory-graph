@@ -97,7 +97,17 @@ export function BuildCanvas({
       canvas.style.width = `${rect.width}px`;
       canvas.style.height = `${rect.height}px`;
       sizeRef.current = { width: rect.width, height: rect.height };
-      if (!viewRef.current) viewRef.current = initialView(live.current.build, rect.width, rect.height);
+      if (!viewRef.current) {
+        // Opening on a selection — a row just laid out from the graph — frames
+        // that; otherwise the whole build.
+        const chosen = new Set(live.current.selection);
+        const focus = live.current.build.entities.filter((entity) => chosen.has(entity.id));
+        viewRef.current = initialView(
+          focus.length > 0 ? { ...live.current.build, entities: focus } : live.current.build,
+          rect.width,
+          rect.height,
+        );
+      }
       dirtyRef.current = true;
     };
     resize();

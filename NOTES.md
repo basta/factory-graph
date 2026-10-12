@@ -870,3 +870,44 @@ These are listed so nobody mistakes them for bugs:
   at. One cable assembler feeds one circuit assembler. The plan asks for 1.5
   circuits/s and the build makes 1.0. The circuit machine's bar and its 67 % go to
   `--warn`, which is the whole point of the view.
+
+### Undergrounds and splitters
+
+- **An underground's lane runs to its exit.** Lanes gained a length. An entrance's
+  lanes are `32 × span` units long and empty straight into the exit's lanes, so the
+  tiles under the ground hold items at belt density (a blocked four-tile tunnel holds 16
+  a lane, the test checks it) and take the right time to cross. No hidden tiles, no
+  special case in the mover.
+- **Pairing is the game's rule**: an entrance pairs with the first same-tier underground
+  ahead of it facing the same way, if that is an exit within reach (5/7/9/11). Placing
+  the tool behind a waiting entrance makes an exit, so laying a tunnel is two clicks, as
+  in the game.
+- **Splitters move items lane by lane** between input and output lanes of their own:
+  a left-lane item stays on a left lane. Each lane alternates outputs and inputs; a
+  priority side is tried first; a filter sends its item only to the priority side and
+  everything else only to the other. The tests run a 1-to-2 split (7.5 and 7.5), a
+  priority split (15 and 0), two full inputs through (30), and a filter sort.
+- **A filter drawn as a sprite looked like a stray item.** The screenshot showed one
+  iron plate on the copper lane after the sorter; a probe of the simulation found none.
+  It was the filter icon, drawn loose on the belt. It now sits on the bar in a framed
+  square.
+
+### Lay out in build
+
+`build/fromGraph.ts` turns a recipe node into the row every player builds first, sized
+from the solve: machines are the node's rounded-up count (one block's worth for a node
+split into blocks), inserter types are the slowest that keep up at 80 % of their
+chest-to-chest rate, and the output sink carries the node's planned rate as its target,
+so the report compares the row with *its* node rather than the whole plan.
+
+The tests do not check the layout's shape; they run it. Gears, circuits (two ingredients,
+a lane each), engines (a third ingredient on a second belt by long-handed inserter) and
+plastic (fluid assumed) are each laid out, simulated for two minutes, and must meet their
+target or keep every machine at least 97 % busy. Engines are judged by utilisation, since
+at 0.15/s a 30 s window sees four or five of them and the rate alone is too coarse.
+
+The first browser run is worth recording. Green circuits at 45/s on yellow belts is 18
+assembler 3s, and the row ran at 2.5/s with machines at 6 %. That is correct: cable has
+one lane of a yellow belt, 7.5/s, which is 2.5 circuits. The warning now says that in
+those words — which item, which lane, what it carries — and how many blocks would fit.
+
