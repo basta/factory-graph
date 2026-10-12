@@ -54,6 +54,42 @@ export interface SourceEntity extends Placed {
 /** Accepts anything from the belt that runs into it or an inserter, and counts it. */
 export interface SinkEntity extends Placed {
   kind: 'sink';
+  /**
+   * What this sink is meant to receive, for the report to compare against.
+   * "Build this" sets it from the node's solved rate. Absent or null, the
+   * report compares with the plan's own outputs instead.
+   */
+  target?: { itemId: string; perSec: number } | null;
+}
+
+/**
+ * One end of an underground pair. Both ends face the way items travel: an
+ * entrance takes items in at its back and sends them under, an exit brings
+ * them up and passes them on at its front. An exit pairs with the nearest
+ * entrance of the same tier behind it, within the tier's reach.
+ */
+export interface UndergroundEntity extends Placed {
+  kind: 'underground';
+  /** The belt tier, which sets both speed and reach. */
+  beltId: string;
+  io: 'in' | 'out';
+}
+
+export type Side = 'left' | 'right';
+
+/**
+ * Two tiles wide, across the direction of travel. Items keep their lane and
+ * alternate between the two outputs; a priority side is filled first, and a
+ * filter sends the filtered item to the priority side and everything else to
+ * the other.
+ */
+export interface SplitterEntity extends Placed {
+  kind: 'splitter';
+  beltId: string;
+  inputPriority: Side | null;
+  outputPriority: Side | null;
+  /** Only meaningful with an output priority. */
+  filter: string | null;
 }
 
 export interface ChestEntity extends Placed {
@@ -66,7 +102,9 @@ export type BuildEntity =
   | MachineEntity
   | SourceEntity
   | SinkEntity
-  | ChestEntity;
+  | ChestEntity
+  | UndergroundEntity
+  | SplitterEntity;
 
 export type EntityKind = BuildEntity['kind'];
 

@@ -19,7 +19,14 @@ import {
 import { BuildCanvas } from './BuildCanvas.tsx';
 import { BuildInspector } from './BuildInspector.tsx';
 import { formatClock } from './names.ts';
-import { INSERTER_SPECS, buildableMachinesFor, defaultBuildMachine, rotate } from './entities.ts';
+import {
+  INSERTER_SPECS,
+  buildableMachinesFor,
+  defaultBuildMachine,
+  rotate,
+  splitterItem,
+  undergroundItem,
+} from './entities.ts';
 import { rotateStamp, stampOf } from './edit.ts';
 import type { Tool } from './tools.ts';
 import { SPEEDS, useSimulation, type BuildWorld } from './useSimulation.ts';
@@ -42,8 +49,24 @@ type ToolKind = (typeof TOOL_ORDER)[number];
 
 const ARROWS = ['↑', '→', '↓', '←'] as const;
 
-/** Picking a recipe or item, either for the tool or for an entity already built. */
-type Picking = { scope: 'build-recipe' | 'build-item'; entityId: string | null } | null;
+/**
+ * Picking a recipe or item, either for the tool or for an entity already
+ * built. `field` is which of the entity's fields an item goes into.
+ */
+type Picking = {
+  scope: 'build-recipe' | 'build-item';
+  entityId: string | null;
+  field?: 'itemId' | 'filter';
+} | null;
+
+/** What the belt tool lays: plain belt, an underground end, or a splitter. */
+type BeltShape = 'belt' | 'underground' | 'splitter';
+const SHAPES: BeltShape[] = ['belt', 'underground', 'splitter'];
+const SHAPE_NAMES: Record<BeltShape, string> = {
+  belt: 'Belt',
+  underground: 'Underground belt',
+  splitter: 'Splitter',
+};
 
 export function BuildView({ buildWorld, result, keysBlocked, say }: Props): JSX.Element {
   const index = useGameData();
@@ -52,6 +75,7 @@ export function BuildView({ buildWorld, result, keysBlocked, say }: Props): JSX.
   const sim = useSimulation(buildWorld);
 
   const [beltId, setBeltId] = useState(index.data.defaults.beltId ?? 'transport-belt');
+  const [shape, setShape] = useState<BeltShape>('belt');
   const [inserterId, setInserterId] = useState('fast-inserter');
   const [machinePick, setMachinePick] = useState<{ machineId: string; recipeId: string } | null>(null);
   const [itemId, setItemId] = useState<string | null>(null);
@@ -65,7 +89,7 @@ export function BuildView({ buildWorld, result, keysBlocked, say }: Props): JSX.
   const tool = useMemo<Tool>(() => {
     switch (kind) {
       case 'belt':
-        return { kind, beltId };
+        return { kind: shape, beltId };
       case 'inserter':
         return { kind, inserterId };
       case 'machine':
@@ -77,16 +101,19 @@ export function BuildView({ buildWorld, result, keysBlocked, say }: Props): JSX.
       default:
         return { kind };
     }
-  }, [kind, beltId, inserterId, machinePick, itemId, stamp]);
+  }, [kind, shape, beltId, inserterId, machinePick, itemId, stamp]);
 
   const chooseTool = useCallback(
     (next: ToolKind) => {
       // Machines and sources need something to make or supply first.
       if (next === 'machine' && !machinePick) setPicking({ scope: 'build-recipe', entityId: null });
       else if (next === 'source' && !itemId) setPicking({ scope: 'build-item', entityId: null });
-      else setKind(next);
+      // Asking for the belt tool again steps through its shapes.
+      else if (next === 'belt' && kind === 'belt') {
+        setShape((current) => SHAPES[(SHAPES.indexOf(current) + 1) % SHAPES.length]!);
+      } else setKind(next);
     },
-    [machinePick, itemId],
+    [machinePick, itemId, kind],
   );
 
   const onChoose = useCallback(
@@ -114,7 +141,11 @@ export function BuildView({ buildWorld, result, keysBlocked, say }: Props): JSX.
           setKind('machine');
         }
       } else if (choice.kind === 'source') {
-        if (target.entityId) store.updateEntity(target.entityId, { itemId: choice.itemId } as Partial<BuildEntity>);
+        if (target.entityId) {
+          store.updateEntity(target.entityId, {
+            [target.field ?? 'itemId']: choice.itemId,
+          } as Partial<BuildEntity>);
+        }
         else {
           setItemId(choice.itemId);
           setKind('source');
@@ -182,8 +213,9 @@ export function BuildView({ buildWorld, result, keysBlocked, say }: Props): JSX.
           return;
         }
         setDir(hovered.dir);
-        if (hovered.kind === 'belt') {
+        if (hovered.kind === 'belt' || hovered.kind === 'underground' || hovered.kind === 'splitter') {
           setBeltId(hovered.beltId);
+          setShape(hovered.kind);
           setKind('belt');
         } else if (hovered.kind === 'inserter') {
           setInserterId(hovered.inserterId);
@@ -249,7 +281,7 @@ export function BuildView({ buildWorld, result, keysBlocked, say }: Props): JSX.
         <div className={styles.toolbar} role="toolbar" aria-label="Build tools">
           <div className={styles.group}>
             {toolButton('select', 'Select', <PointerIcon />, 1)}
-            {toolButton('belt', 'Belt', sprite(beltId), 2)}
+            {toolButton('belt', 'Belt', sprite(shapeItem(shape, beltId)), 2)}
             {toolButton('inserter', 'Inserter', sprite(inserterId), 3)}
             {toolButton('machine', 'Machine', recipe ? <Sprite icon={recipe.icon} size={20} /> : sprite('assembling-machine-2'), 4)}
             {toolButton('source', 'Source', itemId ? sprite(itemId) : <SourceIcon />, 5)}
@@ -261,21 +293,40 @@ export function BuildView({ buildWorld, result, keysBlocked, say }: Props): JSX.
           <span className={styles.divider} />
 
           <div className={styles.variants}>
-            {kind === 'belt'
-              ? index.data.belts.map((belt) => (
+            {kind === 'belt' ? (
+              <>
+                {SHAPES.map((which) => (
                   <button
-                    key={belt.id}
+                    key={which}
                     type="button"
-                    className={[styles.variant, beltId === belt.id ? styles.variantOn : ''].join(' ')}
-                    title={belt.name}
-                    aria-label={belt.name}
-                    aria-pressed={beltId === belt.id}
-                    onClick={() => setBeltId(belt.id)}
+                    className={[styles.variant, shape === which ? styles.variantOn : ''].join(' ')}
+                    title={`${SHAPE_NAMES[which]} (2 again to switch)`}
+                    aria-label={SHAPE_NAMES[which]}
+                    aria-pressed={shape === which}
+                    onClick={() => setShape(which)}
                   >
-                    <Sprite icon={belt.icon} size={18} />
+                    {sprite(shapeItem(which, beltId), 18)}
                   </button>
-                ))
-              : null}
+                ))}
+                <span className={styles.divider} />
+                {index.data.belts.map((belt) => {
+                  const name = index.items.get(shapeItem(shape, belt.id))?.name ?? belt.name;
+                  return (
+                    <button
+                      key={belt.id}
+                      type="button"
+                      className={[styles.variant, beltId === belt.id ? styles.variantOn : ''].join(' ')}
+                      title={name}
+                      aria-label={name}
+                      aria-pressed={beltId === belt.id}
+                      onClick={() => setBeltId(belt.id)}
+                    >
+                      {sprite(shapeItem(shape, belt.id), 18)}
+                    </button>
+                  );
+                })}
+              </>
+            ) : null}
             {kind === 'inserter'
               ? index.data.inserters
                   .filter((spec) => spec.id in INSERTER_SPECS)
@@ -418,7 +469,7 @@ export function BuildView({ buildWorld, result, keysBlocked, say }: Props): JSX.
         world={world}
         selection={selection}
         result={result}
-        onPick={(entityId, scope) => setPicking({ entityId, scope })}
+        onPick={(entityId, scope, field) => setPicking({ entityId, scope, field })}
       />
       <Search
         open={picking !== null}
@@ -429,4 +480,11 @@ export function BuildView({ buildWorld, result, keysBlocked, say }: Props): JSX.
       />
     </div>
   );
+}
+
+/** The game item a belt-tool shape places at a tier, for its sprite and name. */
+function shapeItem(shape: BeltShape, beltId: string): string {
+  if (shape === 'underground') return undergroundItem(beltId);
+  if (shape === 'splitter') return splitterItem(beltId);
+  return beltId;
 }

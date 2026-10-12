@@ -245,3 +245,134 @@ describe('recompiling', () => {
     expect(next.machines[0]!.outputs.size).toBe(0);
   });
 });
+
+const underground = (x: number, y: number, dir: Dir, io: 'in' | 'out', beltId = 'transport-belt'): BuildEntity => ({
+  id: id(), kind: 'underground', x, y, dir, io, beltId,
+});
+const splitter = (
+  x: number,
+  y: number,
+  dir: Dir,
+  options: { input?: 'left' | 'right'; output?: 'left' | 'right'; filter?: string } = {},
+): BuildEntity => ({
+  id: id(), kind: 'splitter', x, y, dir, beltId: 'transport-belt',
+  inputPriority: options.input ?? null,
+  outputPriority: options.output ?? null,
+  filter: options.filter ?? null,
+});
+
+/** Total items per second into the sink at a tile. */
+function sinkAt(world: World, x: number, y: number, itemId: string): number {
+  const s = world.sinks.find((sink) => sink.entity.x === x && sink.entity.y === y);
+  const meter = s?.meters.get(itemId);
+  return meter ? meterRate(meter, world.tick) : 0;
+}
+
+describe('underground belts', () => {
+  const tunnel = (exitAt: number, extra: BuildEntity[] = []): World =>
+    run(
+      [
+        source(0, 0, E, 'iron-plate'),
+        belt(1, 0, E),
+        underground(2, 0, E, 'in'),
+        underground(exitAt, 0, E, 'out'),
+        belt(exitAt + 1, 0, E),
+        sink(exitAt + 2, 0),
+        ...extra,
+      ],
+      60,
+    );
+
+  it('carry a full belt under four tiles, with another belt crossing above', () => {
+    const crossing = [source(4, -2, S, 'copper-plate'), belt(4, -1, S), belt(4, 0, S), belt(4, 1, S), sink(4, 2)];
+    const world = tunnel(6, crossing);
+    expect(world.undergrounds[0]!.span).toBe(4);
+    expect(sinkAt(world, 8, 0, 'iron-plate')).toBeCloseTo(15, 1);
+    expect(sinkAt(world, 4, 2, 'copper-plate')).toBeCloseTo(15, 1);
+  });
+
+  it('do not reach past their tier', () => {
+    // A transport-belt underground reaches 5 tiles; 6 is too far.
+    expect(tunnel(7).undergrounds[0]!.span).toBe(5);
+    const world = tunnel(8);
+    expect(world.undergrounds[0]!.partner).toBeNull();
+    expect(sinkAt(world, 10, 0, 'iron-plate')).toBe(0);
+  });
+
+  it('hold items under the ground at belt density', () => {
+    // Blocked exit: the four tiles under the ground fill like four belt tiles.
+    const world = run(
+      [source(0, 0, E, 'iron-plate'), belt(1, 0, E), underground(2, 0, E, 'in'), underground(6, 0, E, 'out')],
+      60,
+    );
+    const lanes = world.undergrounds[0]!.lanes.map((lane) => world.lanes[lane]!.items.length);
+    expect(lanes).toEqual([16, 16]);
+  });
+
+  it('pair with the nearest entrance, so a second one in between takes the exit', () => {
+    const world = run(
+      [underground(0, 0, E, 'in'), underground(2, 0, E, 'in'), underground(4, 0, E, 'out')],
+      1,
+    );
+    expect(world.undergrounds[0]!.partner).toBeNull();
+    expect(world.undergrounds[1]!.partner).toBe(2);
+  });
+});
+
+describe('splitters', () => {
+  // Iron east along y=0 into the left (north) half of an east-facing
+  // splitter at x=3, out along y=0 and y=1 to two sinks.
+  const fork = (s: BuildEntity, feedBoth = false): World => {
+    const entities: BuildEntity[] = [source(0, 0, E, 'iron-plate'), belt(1, 0, E), belt(2, 0, E), s];
+    if (feedBoth) entities.push(source(0, 1, E, 'iron-plate'), belt(1, 1, E), belt(2, 1, E));
+    for (const y of [0, 1]) entities.push(belt(4, y, E), belt(5, y, E), sink(6, y));
+    return run(entities, 60);
+  };
+
+  it('split one belt evenly between two', () => {
+    const world = fork(splitter(3, 0, E));
+    expect(sinkAt(world, 6, 0, 'iron-plate')).toBeCloseTo(7.5, 1);
+    expect(sinkAt(world, 6, 1, 'iron-plate')).toBeCloseTo(7.5, 1);
+  });
+
+  it('fill the priority output first', () => {
+    // Facing east, the left half is the north one.
+    const world = fork(splitter(3, 0, E, { output: 'right' }));
+    expect(sinkAt(world, 6, 1, 'iron-plate')).toBeCloseTo(15, 1);
+    expect(sinkAt(world, 6, 0, 'iron-plate')).toBeCloseTo(0, 1);
+  });
+
+  it('carry two full inputs through two full outputs', () => {
+    const world = fork(splitter(3, 0, E), true);
+    expect(sinkAt(world, 6, 0, 'iron-plate') + sinkAt(world, 6, 1, 'iron-plate')).toBeCloseTo(30, 0);
+  });
+
+  it('filter one item to the priority side and the rest to the other', () => {
+    // Iron on the belt's left lane, copper on its right, by side-loading.
+    const entities: BuildEntity[] = [
+      belt(0, 0, E), belt(1, 0, E), belt(2, 0, E),
+      source(1, -1, S, 'iron-plate'), source(1, 1, N, 'copper-plate'),
+      splitter(3, 0, E, { output: 'left', filter: 'copper-plate' }),
+    ];
+    for (const y of [0, 1]) entities.push(belt(4, y, E), belt(5, y, E), sink(6, y));
+    const world = run(entities, 60);
+    expect(sinkAt(world, 6, 0, 'copper-plate')).toBeCloseTo(7.5, 1);
+    expect(sinkAt(world, 6, 0, 'iron-plate')).toBe(0);
+    expect(sinkAt(world, 6, 1, 'iron-plate')).toBeCloseTo(7.5, 1);
+    expect(sinkAt(world, 6, 1, 'copper-plate')).toBe(0);
+  });
+
+  it('keep each item on its lane', () => {
+    const entities: BuildEntity[] = [
+      belt(0, 0, E), belt(1, 0, E), belt(2, 0, E),
+      source(1, -1, S, 'iron-plate'),
+      splitter(3, 0, E),
+    ];
+    for (const y of [0, 1]) entities.push(belt(4, y, E), belt(5, y, E));
+    const world = run(entities, 30);
+    // Side-loaded from the north onto an eastbound belt: the left lane.
+    for (const b of world.belts.filter((b) => b.entity.x >= 4)) {
+      expect(world.lanes[b.lanes[1]]!.items).toHaveLength(0);
+    }
+  });
+});

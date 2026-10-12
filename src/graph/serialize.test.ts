@@ -244,6 +244,12 @@ describe('builds', () => {
         { id: 'b4', kind: 'source', x: -1, y: 0, dir: 1, itemId: 'iron-plate', perSec: 7.5 },
         { id: 'b5', kind: 'sink', x: 5, y: 0, dir: 0 },
         { id: 'b6', kind: 'chest', x: 4, y: 4, dir: 0 },
+        { id: 'b7', kind: 'underground', x: 8, y: 0, dir: 1, beltId: 'fast-transport-belt', io: 'in' },
+        {
+          id: 'b8', kind: 'splitter', x: 9, y: 2, dir: 2, beltId: 'transport-belt',
+          inputPriority: 'left', outputPriority: 'right', filter: 'iron-plate',
+        },
+        { id: 'b9', kind: 'sink', x: 9, y: 4, dir: 0, target: { itemId: 'iron-plate', perSec: 7.5 } },
       ],
     },
   };

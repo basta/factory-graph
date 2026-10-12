@@ -5,6 +5,8 @@ import type { Build } from './types.ts';
 
 const dirSchema = z.union([z.literal(0), z.literal(1), z.literal(2), z.literal(3)]);
 
+const sideSchema = z.union([z.literal('left'), z.literal('right')]);
+
 const placed = {
   id: z.string(),
   x: z.number().int(),
@@ -27,8 +29,29 @@ const entitySchema = z.discriminatedUnion('kind', [
     itemId: z.string(),
     perSec: z.number().finite().positive().nullable(),
   }),
-  z.object({ ...placed, kind: z.literal('sink') }),
+  z.object({
+    ...placed,
+    kind: z.literal('sink'),
+    target: z
+      .object({ itemId: z.string(), perSec: z.number().finite().nonnegative() })
+      .nullable()
+      .optional(),
+  }),
   z.object({ ...placed, kind: z.literal('chest') }),
+  z.object({
+    ...placed,
+    kind: z.literal('underground'),
+    beltId: z.string(),
+    io: z.union([z.literal('in'), z.literal('out')]),
+  }),
+  z.object({
+    ...placed,
+    kind: z.literal('splitter'),
+    beltId: z.string(),
+    inputPriority: sideSchema.nullable(),
+    outputPriority: sideSchema.nullable(),
+    filter: z.string().nullable(),
+  }),
 ]);
 
 export const buildSchema = z.object({

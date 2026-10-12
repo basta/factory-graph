@@ -13,6 +13,7 @@ import {
   type LaneItem,
   type MachineState,
   type Ref,
+  type SplitterState,
   type World,
 } from './world.ts';
 
@@ -23,12 +24,15 @@ import {
  */
 export const LANE_END = LANE_LENGTH - ITEM_GAP / 2;
 
+const endOf = (lane: Lane): number => lane.length - ITEM_GAP / 2;
+
 /** How long an inserter at a belt waits for a fuller hand before swinging with what it has. */
 export const BELT_PICKUP_PATIENCE = 12;
 
 export function stepWorld(world: World, ticks = 1): void {
   for (let i = 0; i < ticks; i += 1) {
     for (const lane of world.order) moveLane(world, lane);
+    for (const splitter of world.splitters) split(world, splitter);
     for (const source of world.sources) fillSource(world, source);
     for (const machine of world.machines) craft(world, machine);
     for (const inserter of world.inserters) swing(world, inserter);
@@ -62,11 +66,11 @@ function moveLane(world: World, index: number): void {
   // up to a gap behind that tile's last item; a side-load has to wait at the
   // edge for a hole; a dead end stops it at the edge.
   let limit: number;
-  if (next === null || (next.kind === 'lane' && next.at !== 0)) limit = LANE_END;
+  if (next === null || (next.kind === 'lane' && next.at !== 0)) limit = endOf(lane);
   else if (next.kind === 'sink') limit = Number.POSITIVE_INFINITY;
   else {
     const rear = world.lanes[next.lane]!.items.at(-1);
-    limit = rear ? LANE_LENGTH + rear.pos - ITEM_GAP : Number.POSITIVE_INFINITY;
+    limit = rear ? lane.length + rear.pos - ITEM_GAP : Number.POSITIVE_INFINITY;
   }
 
   for (const item of lane.items) {
@@ -79,21 +83,75 @@ function moveLane(world: World, index: number): void {
   const front = lane.items[0]!;
   if (next === null) return;
   if (next.kind === 'sink') {
-    if (front.pos < LANE_LENGTH) return;
+    if (front.pos < lane.length) return;
     lane.items.shift();
     deliverToSink(world, next.sink, front.itemId, 1);
     return;
   }
   const target = world.lanes[next.lane]!;
   if (next.at === 0) {
-    if (front.pos < LANE_LENGTH) return;
+    if (front.pos < lane.length) return;
     lane.items.shift();
-    front.pos -= LANE_LENGTH;
+    front.pos -= lane.length;
     target.items.push(front);
-  } else if (front.pos >= LANE_END && roomAt(target, next.at)) {
+  } else if (front.pos >= endOf(lane) && roomAt(target, next.at)) {
     lane.items.shift();
     front.pos = next.at;
     insertSorted(target, front);
+  }
+}
+
+/**
+ * Puts an item on at the back of a lane if the last one has moved a gap
+ * along, exactly a gap behind it, so belts whose speed does not divide the
+ * gap still fill solid.
+ */
+function pushRear(lane: Lane, itemId: string): boolean {
+  const rear = lane.items.at(-1);
+  if (rear && rear.pos < ITEM_GAP) return false;
+  const pos = rear ? Math.min(rear.pos - ITEM_GAP, lane.speed - 1) : 0;
+  lane.items.push({ itemId, pos });
+  return true;
+}
+
+/**
+ * Moves items from a splitter's inputs to its outputs, lane by lane: a left
+ * lane item stays on a left lane. Each lane alternates between the two
+ * outputs, and takes from the two inputs in turn, unless a side has
+ * priority, in which case that side is tried first and the other only gets
+ * what does not fit. A filter sends the filtered item only to the priority
+ * output and everything else only to the other.
+ */
+function split(world: World, splitter: SplitterState): void {
+  const { inputPriority, outputPriority, filter } = splitter.entity;
+  const sideIndex = (side: 'left' | 'right'): 0 | 1 => (side === 'left' ? 0 : 1);
+  for (let laneIndex = 0; laneIndex < 2; laneIndex += 1) {
+    const first: 0 | 1 = inputPriority ? sideIndex(inputPriority) : splitter.nextInput[laneIndex]!;
+    for (const from of [first, first === 0 ? 1 : 0] as const) {
+      const input = world.lanes[splitter.halves[from].input[laneIndex]!]!;
+      const front = input.items[0];
+      if (!front || front.pos < endOf(input)) continue;
+
+      let outputs: (0 | 1)[];
+      if (outputPriority && filter) {
+        const preferred = sideIndex(outputPriority);
+        outputs = [front.itemId === filter ? preferred : preferred === 0 ? 1 : 0];
+      } else if (outputPriority) {
+        const preferred = sideIndex(outputPriority);
+        outputs = [preferred, preferred === 0 ? 1 : 0];
+      } else {
+        const next = splitter.nextOutput[laneIndex]!;
+        outputs = [next, next === 0 ? 1 : 0];
+      }
+      for (const to of outputs) {
+        const output = world.lanes[splitter.halves[to].output[laneIndex]!]!;
+        if (!pushRear(output, front.itemId)) continue;
+        input.items.shift();
+        splitter.nextOutput[laneIndex] = to === 0 ? 1 : 0;
+        splitter.nextInput[laneIndex] = from === 0 ? 1 : 0;
+        break;
+      }
+    }
   }
 }
 
@@ -109,12 +167,7 @@ function fillSource(world: World, source: World['sources'][number]): void {
     const lane = world.lanes[source.lanes[source.flip]!]!;
     source.flip = source.flip === 0 ? 1 : 0;
     if (lane.next === null) continue;
-    const rear = lane.items.at(-1);
-    if (rear && rear.pos < ITEM_GAP) continue;
-    // Exactly a gap behind the last item when it has only just made room, so
-    // belts whose speed does not divide the gap still fill solid.
-    const pos = rear ? Math.min(rear.pos - ITEM_GAP, lane.speed - 1) : 0;
-    lane.items.push({ itemId, pos });
+    if (!pushRear(lane, itemId)) continue;
     source.tokens -= 1;
     record(source.meter, world.tick);
   }
@@ -186,6 +239,7 @@ function finish(world: World, machine: MachineState): void {
 function wants(world: World, ref: Ref, itemId: string): number {
   switch (ref.kind) {
     case 'belt':
+    case 'underground':
       return world.fluidIds.has(itemId) ? 0 : Number.POSITIVE_INFINITY;
     case 'sink':
       return Number.POSITIVE_INFINITY;
@@ -215,13 +269,18 @@ function take(
     (heldId === null || itemId === heldId) && wants(world, to, itemId) > 0;
 
   switch (from.kind) {
-    case 'belt': {
-      // One item a tick off a belt, whichever acceptable item is furthest along.
-      const belt = world.belts[from.index]!;
+    case 'belt':
+    case 'underground': {
+      // One item a tick off a belt, whichever acceptable item is furthest
+      // along. On an underground only the part above ground can be reached.
+      const lanes =
+        from.kind === 'belt' ? world.belts[from.index]!.lanes : world.undergrounds[from.index]!.lanes;
       let best: { lane: Lane; at: number } | null = null;
-      for (const laneIndex of belt.lanes) {
+      for (const laneIndex of lanes) {
         const lane = world.lanes[laneIndex]!;
-        const at = lane.items.findIndex((item) => acceptable(item.itemId));
+        const at = lane.items.findIndex(
+          (item) => item.pos <= LANE_LENGTH && acceptable(item.itemId),
+        );
         if (at === -1) continue;
         if (!best || lane.items[at]!.pos > best.lane.items[best.at]!.pos) best = { lane, at };
       }
@@ -268,10 +327,12 @@ function take(
 /** Puts down as much of the hand as the target accepts; returns how many. */
 function give(world: World, inserter: InserterState, to: Ref, itemId: string, count: number): number {
   switch (to.kind) {
-    case 'belt': {
+    case 'belt':
+    case 'underground': {
       // One item a tick, mid-tile on the far lane, when there is a gap for it.
-      const belt = world.belts[to.index]!;
-      const lane = world.lanes[belt.lanes[inserter.dropLane]]!;
+      const lanes =
+        to.kind === 'belt' ? world.belts[to.index]!.lanes : world.undergrounds[to.index]!.lanes;
+      const lane = world.lanes[lanes[inserter.dropLane]]!;
       const at = LANE_LENGTH / 2;
       if (!roomAt(lane, at)) return 0;
       insertSorted(lane, { itemId, pos: at });

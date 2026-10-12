@@ -87,6 +87,8 @@ export function footprint(entity: Pick<BuildEntity, 'kind' | 'dir'> & { machineI
   w: number;
   h: number;
 } {
+  // A splitter spans two tiles across its direction of travel.
+  if (entity.kind === 'splitter') return entity.dir % 2 === 0 ? { w: 2, h: 1 } : { w: 1, h: 2 };
   if (entity.kind !== 'machine' || !entity.machineId) return { w: 1, h: 1 };
   const [w, h] = MACHINE_FOOTPRINT[entity.machineId] ?? [3, 3];
   // East and west turn the long side horizontal.
@@ -95,6 +97,58 @@ export function footprint(entity: Pick<BuildEntity, 'kind' | 'dir'> & { machineI
 
 export function entityFootprint(entity: BuildEntity): { w: number; h: number } {
   return footprint(entity.kind === 'machine' ? entity : { kind: entity.kind, dir: entity.dir });
+}
+
+/**
+ * The two tiles of a splitter, left half first, looking along its direction.
+ * Facing north the left half is the west tile; facing south it is the east one.
+ */
+export function splitterHalves(entity: { x: number; y: number; dir: Dir }): [
+  { x: number; y: number },
+  { x: number; y: number },
+] {
+  const { x, y } = entity;
+  switch (entity.dir) {
+    case 0:
+      return [{ x, y }, { x: x + 1, y }];
+    case 1:
+      return [{ x, y }, { x, y: y + 1 }];
+    case 2:
+      return [{ x: x + 1, y }, { x, y }];
+    case 3:
+      return [{ x, y: y + 1 }, { x, y }];
+  }
+}
+
+/**
+ * Underground reach by tier: the most tiles from entrance to exit, counting
+ * the exit, from the 2.0 prototypes' `max_distance`.
+ */
+export const UNDERGROUND_REACH: Readonly<Record<string, number>> = {
+  'transport-belt': 5,
+  'fast-transport-belt': 7,
+  'express-transport-belt': 9,
+  'turbo-transport-belt': 11,
+};
+
+export function undergroundReach(beltId: string): number {
+  return UNDERGROUND_REACH[beltId] ?? 5;
+}
+
+/** The game item for a belt tier's underground or splitter, for its sprite and name. */
+const TIER_PREFIX: Readonly<Record<string, string>> = {
+  'transport-belt': '',
+  'fast-transport-belt': 'fast-',
+  'express-transport-belt': 'express-',
+  'turbo-transport-belt': 'turbo-',
+};
+
+export function undergroundItem(beltId: string): string {
+  return `${TIER_PREFIX[beltId] ?? ''}underground-belt`;
+}
+
+export function splitterItem(beltId: string): string {
+  return `${TIER_PREFIX[beltId] ?? ''}splitter`;
 }
 
 export function isBuildableMachine(machineId: string): boolean {

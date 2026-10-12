@@ -78,6 +78,7 @@ export const BUILD_SHORTCUTS: ShortcutGroup[] = [
     group: 'Tools',
     items: [
       { keys: ['1'], then: 'to 8', description: 'Pick a tool, in toolbar order' },
+      { keys: ['2'], then: 'again', description: 'Belt, underground, splitter' },
       { keys: ['R'], description: 'Rotate what you are placing, or the entity under the pointer' },
       { keys: ['Shift', 'R'], description: 'Rotate the other way' },
       { keys: ['Q'], description: 'Pick up the tool for the entity under the pointer' },

@@ -1,4 +1,5 @@
 import type { GameIndex } from '../data/loader.ts';
+import { splitterItem, undergroundItem } from './entities.ts';
 import type { BuildEntity } from './types.ts';
 
 export function entityName(entity: BuildEntity, index: GameIndex): string {
@@ -15,6 +16,12 @@ export function entityName(entity: BuildEntity, index: GameIndex): string {
       return 'Sink';
     case 'chest':
       return 'Steel chest';
+    case 'underground': {
+      const item = index.items.get(undergroundItem(entity.beltId))?.name ?? 'Underground belt';
+      return `${item} ${entity.io === 'in' ? 'entrance' : 'exit'}`;
+    }
+    case 'splitter':
+      return index.items.get(splitterItem(entity.beltId))?.name ?? 'Splitter';
   }
 }
 

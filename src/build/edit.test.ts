@@ -1,10 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { placeEntities, removeEntities, rotateEntity, rotateStamp, stampAt, stampOf } from './edit.ts';
 import { emptyBuild, type BuildEntity, type Dir } from './types.ts';
+import { entityFor, undergroundRoleAt } from './tools.ts';
 
-const belt = (id: string, x: number, y: number, dir: Dir = 1): BuildEntity => ({
-  id, kind: 'belt', x, y, dir, beltId: 'transport-belt',
-});
+function belt(id: string, x: number, y: number, dir: Dir = 1): BuildEntity {
+  return {
+    id, kind: 'belt', x, y, dir, beltId: 'transport-belt',
+  };
+}
 const assembler = (id: string, x: number, y: number): BuildEntity => ({
   id, kind: 'machine', x, y, dir: 0, machineId: 'assembling-machine-2', recipeId: null,
 });
@@ -59,5 +62,33 @@ describe('rotating', () => {
     const b = placed.find((e) => e.kind === 'belt')!;
     expect(machine).toMatchObject({ x: 0, y: 0 });
     expect(b).toMatchObject({ x: 1, y: 3, dir: 2 });
+  });
+});
+
+describe('belt shapes', () => {
+  const ug = (id: string, x: number, io: 'in' | 'out', beltId = 'transport-belt'): BuildEntity => ({
+    id, kind: 'underground', x, y: 0, dir: 1, io, beltId,
+  });
+
+  it('makes the next underground an exit when an entrance waits behind it', () => {
+    const build = placeEntities(emptyBuild(), [ug('a', 0, 'in')]).build;
+    expect(undergroundRoleAt(build, { x: 4, y: 0 }, 1, 'transport-belt')).toBe('out');
+    // Out of reach, or another tier, starts a new pair.
+    expect(undergroundRoleAt(build, { x: 6, y: 0 }, 1, 'transport-belt')).toBe('in');
+    expect(undergroundRoleAt(build, { x: 4, y: 0 }, 1, 'fast-transport-belt')).toBe('in');
+    // And after a finished pair, the next one is an entrance again.
+    const paired = placeEntities(build, [ug('b', 3, 'out')]).build;
+    expect(undergroundRoleAt(paired, { x: 5, y: 0 }, 1, 'transport-belt')).toBe('in');
+  });
+
+  it('holds a splitter by its left half and covers two tiles across it', () => {
+    const tool = { kind: 'splitter', beltId: 'transport-belt' } as const;
+    const facingSouth = entityFor(tool, { x: 5, y: 5 }, 2, emptyBuild(), 's');
+    // Facing south, left is east: the pointer tile is the east half.
+    expect(facingSouth).toMatchObject({ x: 4, y: 5 });
+    const facingEast = entityFor(tool, { x: 5, y: 5 }, 1, emptyBuild(), 's');
+    expect(placeEntities(emptyBuild(), [facingEast]).build.entities).toHaveLength(1);
+    const blocked = placeEntities(emptyBuild(), [belt('b', 5, 6)]).build;
+    expect(placeEntities(blocked, [facingEast]).placed).toEqual([null]);
   });
 });

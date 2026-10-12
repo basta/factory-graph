@@ -365,6 +365,58 @@ function circuitCell(): GraphDocument {
 
 FIXTURES['circuit-cell'] = circuitCell();
 
+/**
+ * Undergrounds and splitters, with nothing to plan: a copper line tunnels
+ * under an iron line, both lanes of a mixed belt are split by a filter, and
+ * a plain splitter halves a full belt.
+ */
+function beltShapes(): GraphDocument {
+  const E: Dir = 1;
+  const S: Dir = 2;
+  const N: Dir = 0;
+  const belt = (x: number, y: number, dir: Dir, beltId = 'transport-belt'): BuildEntity => ({
+    id: `b${x}_${y}`, kind: 'belt', x, y, dir, beltId,
+  });
+  const entities: BuildEntity[] = [];
+  // Iron runs south down x=4, crossing the copper line at y=2.
+  entities.push({ id: 'fe', kind: 'source', x: 4, y: -2, dir: S, itemId: 'iron-plate', perSec: null });
+  for (let y = -1; y <= 5; y += 1) entities.push(belt(4, y, S));
+  entities.push({ id: 'fe-out', kind: 'sink', x: 4, y: 6, dir: 0 });
+  // Copper goes east under it.
+  entities.push({ id: 'cu', kind: 'source', x: 0, y: 2, dir: E, itemId: 'copper-plate', perSec: null });
+  entities.push(belt(1, 2, E), belt(2, 2, E));
+  entities.push({ id: 'u-in', kind: 'underground', x: 3, y: 2, dir: E, beltId: 'transport-belt', io: 'in' });
+  entities.push({ id: 'u-out', kind: 'underground', x: 5, y: 2, dir: E, beltId: 'transport-belt', io: 'out' });
+  entities.push(belt(6, 2, E), belt(7, 2, E));
+  entities.push({
+    id: 'split', kind: 'splitter', x: 8, y: 2, dir: E, beltId: 'transport-belt',
+    inputPriority: null, outputPriority: null, filter: null,
+  });
+  for (const y of [2, 3]) {
+    entities.push(belt(9, y, E), belt(10, y, E));
+    entities.push({ id: `cu-out${y}`, kind: 'sink', x: 11, y, dir: 0 });
+  }
+  // A mixed belt, iron on the left lane and copper on the right, sorted by a filter.
+  for (let x = 0; x <= 7; x += 1) entities.push(belt(x, 8, E));
+  entities.push({ id: 'mix-fe', kind: 'source', x: 2, y: 7, dir: S, itemId: 'iron-plate', perSec: null });
+  entities.push({ id: 'mix-cu', kind: 'source', x: 2, y: 9, dir: N, itemId: 'copper-plate', perSec: null });
+  entities.push({
+    id: 'sort', kind: 'splitter', x: 8, y: 8, dir: E, beltId: 'transport-belt',
+    inputPriority: null, outputPriority: 'left', filter: 'iron-plate',
+  });
+  for (const y of [8, 9]) {
+    entities.push(belt(9, y, E), belt(10, y, E));
+    entities.push({ id: `mix-out${y}`, kind: 'sink', x: 11, y, dir: 0 });
+  }
+  return {
+    projectName: 'Belt shapes',
+    graph: build([], []),
+    build: { hands: 'researched', entities },
+  };
+}
+
+FIXTURES['belt-shapes'] = beltShapes();
+
 const name = process.argv[2] ?? 'green-circuits';
 const fixture = FIXTURES[name];
 if (!fixture) {

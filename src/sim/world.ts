@@ -24,6 +24,8 @@ import {
   beltSpeed,
   entityFootprint,
   handSize,
+  splitterHalves,
+  undergroundReach,
   type InserterSpec,
 } from '../build/entities.ts';
 import {
@@ -42,13 +44,15 @@ import {
   type MachineEntity,
   type SinkEntity,
   type SourceEntity,
+  type SplitterEntity,
   type Tile,
+  type UndergroundEntity,
 } from '../build/types.ts';
 import { createMeter, type Meter } from './meter.ts';
 
 export interface LaneItem {
   itemId: string;
-  /** 0 at the tile's back edge, `LANE_LENGTH` at its front. */
+  /** 0 at the lane's back edge, `lane.length` at its front. */
   pos: number;
 }
 
@@ -58,10 +62,16 @@ export type LaneLink =
   | { kind: 'sink'; sink: number };
 
 export interface Lane {
-  /** Front first: the item nearest the end of the tile is `items[0]`. */
+  /** Front first: the item nearest the end of the lane is `items[0]`. */
   items: LaneItem[];
   /** Units per tick. */
   speed: number;
+  /**
+   * `LANE_LENGTH` for one tile. An underground entrance's lane runs all the
+   * way to its exit, so items spend as long under the ground as the game
+   * keeps them there, and fill it at the same density.
+   */
+  length: number;
   next: LaneLink | null;
 }
 
@@ -76,6 +86,33 @@ export interface BeltState {
    * a straight belt; on a curve it is the feeding belt's direction.
    */
   entry: Dir;
+}
+
+export interface UndergroundState {
+  entity: UndergroundEntity;
+  lanes: LanePair;
+  /** For an entrance, its exit's index in `world.undergrounds`; for an exit, its entrance's. */
+  partner: number | null;
+  /** Tiles from entrance to exit; 0 when unpaired. */
+  span: number;
+}
+
+export interface SplitterHalf {
+  tile: Tile;
+  /** Where items arrive from the belt behind; the splitter empties them. */
+  input: LanePair;
+  /** What the splitter fills, emptying onto the belt in front. */
+  output: LanePair;
+}
+
+export interface SplitterState {
+  entity: SplitterEntity;
+  /** Left half first, looking along the splitter. */
+  halves: [SplitterHalf, SplitterHalf];
+  /** Per lane, the output half the next item goes to when neither has priority. */
+  nextOutput: [0 | 1, 0 | 1];
+  /** Per lane, the input half served first when neither has priority. */
+  nextInput: [0 | 1, 0 | 1];
 }
 
 export interface SourceState {
@@ -167,6 +204,8 @@ export interface SinkState {
 
 export type Ref =
   | { kind: 'belt'; index: number }
+  | { kind: 'underground'; index: number }
+  | { kind: 'splitter'; index: number }
   | { kind: 'source'; index: number }
   | { kind: 'machine'; index: number }
   | { kind: 'inserter'; index: number }
@@ -181,6 +220,8 @@ export interface World {
   /** Lanes downstream first, so a lane moves into space its successor has just made. */
   order: number[];
   belts: BeltState[];
+  undergrounds: UndergroundState[];
+  splitters: SplitterState[];
   sources: SourceState[];
   machines: MachineState[];
   inserters: InserterState[];
@@ -297,6 +338,8 @@ export function compileWorld(build: Build, index: GameIndex, previous: World | n
     lanes: [],
     order: [],
     belts: [],
+    undergrounds: [],
+    splitters: [],
     sources: [],
     machines: [],
     inserters: [],
@@ -309,7 +352,10 @@ export function compileWorld(build: Build, index: GameIndex, previous: World | n
   };
 
   const newLanes = (): LanePair => {
-    world.lanes.push({ items: [], speed: 1, next: null }, { items: [], speed: 1, next: null });
+    world.lanes.push(
+      { items: [], speed: 1, length: LANE_LENGTH, next: null },
+      { items: [], speed: 1, length: LANE_LENGTH, next: null },
+    );
     return [world.lanes.length - 2, world.lanes.length - 1];
   };
 
@@ -352,6 +398,22 @@ export function compileWorld(build: Build, index: GameIndex, previous: World | n
         world.sinks.push({ entity, meters: new Map(), totals: new Map() });
         ref = { kind: 'sink', index: world.sinks.length - 1 };
         break;
+      case 'underground':
+        world.undergrounds.push({ entity, lanes: newLanes(), partner: null, span: 0 });
+        ref = { kind: 'underground', index: world.undergrounds.length - 1 };
+        break;
+      case 'splitter': {
+        const [left, right] = splitterHalves(entity);
+        const half = (tile: Tile): SplitterHalf => ({ tile, input: newLanes(), output: newLanes() });
+        world.splitters.push({
+          entity,
+          halves: [half(left), half(right)],
+          nextOutput: [0, 0],
+          nextInput: [0, 0],
+        });
+        ref = { kind: 'splitter', index: world.splitters.length - 1 };
+        break;
+      }
     }
     world.byId.set(entity.id, ref);
     for (const tile of tiles) world.tiles.set(tileKey(tile.x, tile.y), ref);
@@ -359,12 +421,23 @@ export function compileWorld(build: Build, index: GameIndex, previous: World | n
 
   const at = (tile: Tile): Ref | undefined => world.tiles.get(tileKey(tile.x, tile.y));
 
-  /** A belt or source on `tile` facing `dir`, i.e. one that moves items that way. */
+  /** Something on `tile` that puts items out of its front, facing `dir`. */
   const conveyorFacing = (tile: Tile, dir: Dir): boolean => {
     const ref = at(tile);
-    if (ref?.kind === 'belt') return world.belts[ref.index]!.entity.dir === dir;
-    if (ref?.kind === 'source') return world.sources[ref.index]!.entity.dir === dir;
-    return false;
+    switch (ref?.kind) {
+      case 'belt':
+        return world.belts[ref.index]!.entity.dir === dir;
+      case 'source':
+        return world.sources[ref.index]!.entity.dir === dir;
+      case 'splitter':
+        return world.splitters[ref.index]!.entity.dir === dir;
+      case 'underground': {
+        const { entity } = world.undergrounds[ref.index]!;
+        return entity.io === 'out' && entity.dir === dir;
+      }
+      default:
+        return false;
+    }
   };
 
   // A belt curves when it is fed from exactly one side and not from behind;
@@ -378,42 +451,125 @@ export function compileWorld(build: Build, index: GameIndex, previous: World | n
     if (fromLeft !== fromRight) belt.entry = fromLeft ? rightOf(dir) : leftOf(dir);
   }
 
+  // --- underground pairs ------------------------------------------------------
+  // An entrance pairs with the first same-tier underground ahead of it facing
+  // the same way, if that is an exit and within reach. Another entrance in
+  // between takes the exit for itself, which is why weaving needs two tiers.
+  for (let i = 0; i < world.undergrounds.length; i += 1) {
+    const entrance = world.undergrounds[i]!;
+    const { entity } = entrance;
+    if (entity.io !== 'in') continue;
+    const reach = undergroundReach(entity.beltId);
+    for (let distance = 1; distance <= reach; distance += 1) {
+      const ref = at(step(entity, entity.dir, distance));
+      if (ref?.kind !== 'underground') continue;
+      const other = world.undergrounds[ref.index]!;
+      if (other.entity.beltId !== entity.beltId || other.entity.dir !== entity.dir) continue;
+      if (other.entity.io === 'out' && other.partner === null) {
+        entrance.partner = ref.index;
+        entrance.span = distance;
+        other.partner = i;
+        other.span = distance;
+      }
+      break;
+    }
+  }
+
   // --- link ------------------------------------------------------------------
+  /**
+   * What a conveyor on `from` facing `dir` empties into. Straight on, and
+   * round a curve it causes, lanes are kept; from the side, both lanes go
+   * onto the target's near lane, half way along.
+   */
   const link = (from: Tile, dir: Dir, lanes: LanePair): void => {
-    const ahead = at(step(from, dir));
     for (const lane of lanes) world.lanes[lane]!.next = null;
+    const aheadTile = step(from, dir);
+    const ahead = at(aheadTile);
     if (!ahead) return;
     if (ahead.kind === 'sink') {
       for (const lane of lanes) world.lanes[lane]!.next = { kind: 'sink', sink: ahead.index };
       return;
     }
-    if (ahead.kind !== 'belt') return;
-    const target = world.belts[ahead.index]!;
-    const targetDir = target.entity.dir;
-    if (targetDir === opposite(dir)) return;
-    if (targetDir === dir || target.entry === dir) {
-      // Straight on, or round a curve this conveyor is the reason for.
+    if (ahead.kind === 'splitter') {
+      // Only from directly behind; a splitter cannot be side-loaded.
+      const splitter = world.splitters[ahead.index]!;
+      if (splitter.entity.dir !== dir) return;
+      const half = splitter.halves.find((h) => h.tile.x === aheadTile.x && h.tile.y === aheadTile.y);
+      if (!half) return;
+      world.lanes[lanes[0]]!.next = { kind: 'lane', lane: half.input[0], at: 0 };
+      world.lanes[lanes[1]]!.next = { kind: 'lane', lane: half.input[1], at: 0 };
+      return;
+    }
+    let target: { dir: Dir; entry: Dir; lanes: LanePair; fromBehind: boolean };
+    if (ahead.kind === 'belt') {
+      const belt = world.belts[ahead.index]!;
+      target = { dir: belt.entity.dir, entry: belt.entry, lanes: belt.lanes, fromBehind: true };
+    } else if (ahead.kind === 'underground') {
+      // An exit's back is the ground; only an entrance takes items from behind.
+      const underground = world.undergrounds[ahead.index]!;
+      target = {
+        dir: underground.entity.dir,
+        entry: underground.entity.dir,
+        lanes: underground.lanes,
+        fromBehind: underground.entity.io === 'in',
+      };
+    } else {
+      return;
+    }
+    if (target.dir === opposite(dir)) return;
+    if (target.dir === dir || target.entry === dir) {
+      if (!target.fromBehind) return;
       world.lanes[lanes[0]]!.next = { kind: 'lane', lane: target.lanes[0], at: 0 };
       world.lanes[lanes[1]]!.next = { kind: 'lane', lane: target.lanes[1], at: 0 };
       return;
     }
-    // Side-load: everything goes onto the target lane nearest this conveyor.
     const side = opposite(dir);
-    const lane = side === leftOf(targetDir) ? target.lanes[0] : target.lanes[1];
+    const lane = side === leftOf(target.dir) ? target.lanes[0] : target.lanes[1];
     for (const own of lanes) world.lanes[own]!.next = { kind: 'lane', lane, at: LANE_LENGTH / 2 };
   };
 
+  const speedOf = (beltId: string): number => beltSpeed(index.belts.get(beltId)?.itemsPerSec ?? 15);
+
   for (const belt of world.belts) {
-    const speed = beltSpeed(index.belts.get(belt.entity.beltId)?.itemsPerSec ?? 15);
+    const speed = speedOf(belt.entity.beltId);
     for (const lane of belt.lanes) world.lanes[lane]!.speed = speed;
     link(belt.entity, belt.entity.dir, belt.lanes);
+  }
+  for (const underground of world.undergrounds) {
+    const { entity } = underground;
+    const speed = speedOf(entity.beltId);
+    for (const lane of underground.lanes) world.lanes[lane]!.speed = speed;
+    if (entity.io === 'out') {
+      link(entity, entity.dir, underground.lanes);
+    } else if (underground.partner !== null) {
+      // The entrance's lanes run under the ground to the exit's back edge.
+      const exit = world.undergrounds[underground.partner]!;
+      for (let i = 0; i < 2; i += 1) {
+        const lane = world.lanes[underground.lanes[i]!]!;
+        lane.length = LANE_LENGTH * underground.span;
+        lane.next = { kind: 'lane', lane: exit.lanes[i]!, at: 0 };
+      }
+    }
+  }
+  for (const splitter of world.splitters) {
+    const speed = speedOf(splitter.entity.beltId);
+    for (const half of splitter.halves) {
+      for (const lane of [...half.input, ...half.output]) world.lanes[lane]!.speed = speed;
+      link(half.tile, splitter.entity.dir, half.output);
+    }
   }
   for (const source of world.sources) {
     // A source runs at the speed of the belt it fills, so it can saturate it
     // and no more.
     const ahead = at(step(source.entity, source.entity.dir));
     const speed =
-      ahead?.kind === 'belt' ? world.lanes[world.belts[ahead.index]!.lanes[0]]!.speed : 4;
+      ahead?.kind === 'belt'
+        ? world.lanes[world.belts[ahead.index]!.lanes[0]]!.speed
+        : ahead?.kind === 'underground'
+          ? world.lanes[world.undergrounds[ahead.index]!.lanes[0]]!.speed
+          : ahead?.kind === 'splitter'
+            ? world.lanes[world.splitters[ahead.index]!.halves[0].input[0]]!.speed
+            : 4;
     for (const lane of source.lanes) world.lanes[lane]!.speed = speed;
     link(source.entity, source.entity.dir, source.lanes);
   }
@@ -421,18 +577,19 @@ export function compileWorld(build: Build, index: GameIndex, previous: World | n
   world.order = downstreamFirst(world.lanes);
 
   // --- inserters ---------------------------------------------------------------
-  const pickupKinds = new Set(['belt', 'source', 'machine', 'chest']);
-  const dropKinds = new Set(['belt', 'machine', 'chest', 'sink']);
+  const pickupKinds = new Set(['belt', 'underground', 'source', 'machine', 'chest']);
+  const dropKinds = new Set(['belt', 'underground', 'machine', 'chest', 'sink']);
   for (const inserter of world.inserters) {
     const { dir } = inserter.entity;
     const from = at(step(inserter.entity, opposite(dir), inserter.spec.reach));
     const to = at(step(inserter.entity, dir, inserter.spec.reach));
     inserter.from = from && pickupKinds.has(from.kind) ? from : null;
     inserter.to = to && dropKinds.has(to.kind) ? to : null;
-    if (to?.kind === 'belt') {
+    if (to?.kind === 'belt' || to?.kind === 'underground') {
       // Inserters drop on the far lane. From behind or in front of the belt
       // there is no far side, and the game uses the right-hand lane.
-      const beltDir = world.belts[to.index]!.entity.dir;
+      const beltDir =
+        to.kind === 'belt' ? world.belts[to.index]!.entity.dir : world.undergrounds[to.index]!.entity.dir;
       inserter.dropLane = dir === leftOf(beltDir) ? 0 : 1;
     }
   }
@@ -484,6 +641,30 @@ function carryOver(previous: World, world: World): void {
   for (const belt of world.belts) {
     const was = old(belt.entity.id, 'belt');
     if (was !== null) copyLanes(previous.belts[was]!.lanes, belt.lanes);
+  }
+  for (const underground of world.undergrounds) {
+    const was = old(underground.entity.id, 'underground');
+    if (was === null) continue;
+    const before = previous.undergrounds[was]!;
+    // A lane that got shorter drops whatever was past its new end.
+    for (let i = 0; i < 2; i += 1) {
+      const lane = world.lanes[underground.lanes[i]!]!;
+      lane.items = previous.lanes[before.lanes[i]!]!.items
+        .filter((item) => item.pos <= lane.length)
+        .map((item) => ({ ...item }));
+    }
+  }
+  for (const splitter of world.splitters) {
+    const was = old(splitter.entity.id, 'splitter');
+    if (was === null) continue;
+    const before = previous.splitters[was]!;
+    if (before.entity.dir !== splitter.entity.dir) continue;
+    for (let h = 0; h < 2; h += 1) {
+      copyLanes(before.halves[h]!.input, splitter.halves[h]!.input);
+      copyLanes(before.halves[h]!.output, splitter.halves[h]!.output);
+    }
+    splitter.nextOutput = [...before.nextOutput];
+    splitter.nextInput = [...before.nextInput];
   }
   for (const source of world.sources) {
     const was = old(source.entity.id, 'source');
@@ -547,6 +728,10 @@ export function refEntity(world: World, ref: Ref): BuildEntity {
   switch (ref.kind) {
     case 'belt':
       return world.belts[ref.index]!.entity;
+    case 'underground':
+      return world.undergrounds[ref.index]!.entity;
+    case 'splitter':
+      return world.splitters[ref.index]!.entity;
     case 'source':
       return world.sources[ref.index]!.entity;
     case 'machine':

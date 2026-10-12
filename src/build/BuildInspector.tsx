@@ -10,7 +10,7 @@ import { PickerRow } from '../ui/PickerRow.tsx';
 import { Sprite } from '../ui/Sprite.tsx';
 import { percent, rate } from '../ui/format.ts';
 import { KEEPING_UP } from './draw.ts';
-import { INSERTER_SPECS, buildableMachinesFor } from './entities.ts';
+import { INSERTER_SPECS, buildableMachinesFor, undergroundReach } from './entities.ts';
 import type { HandSize } from './types.ts';
 import { entityName, formatClock } from './names.ts';
 import styles from '../ui/Inspector.module.css';
@@ -21,8 +21,11 @@ interface Props {
   selection: string[];
   /** The plan's solve, for comparing what the build makes with what was planned. */
   result: SolveResult | null;
-  /** Opens the palette to pick a recipe or item for an entity already placed. */
-  onPick: (entityId: string, scope: 'build-recipe' | 'build-item') => void;
+  /**
+   * Opens the palette to pick a recipe or item for an entity already placed;
+   * `field` says which of its fields an item goes into.
+   */
+  onPick: (entityId: string, scope: 'build-recipe' | 'build-item', field?: 'itemId' | 'filter') => void;
 }
 
 /**
@@ -70,6 +73,38 @@ export function BuildInspector({ world, selection, result, onPick }: Props): JSX
         </div>
       ) : null}
     </aside>
+  );
+}
+
+function Segmented<T extends string>({
+  label,
+  value,
+  options,
+  onChange,
+}: {
+  label: string;
+  value: T;
+  options: [T, string][];
+  onChange: (value: T) => void;
+}): JSX.Element {
+  return (
+    <div className={styles.row}>
+      <span className={styles.label}>{label}</span>
+      <span className={styles.segmented} role="radiogroup" aria-label={label}>
+        {options.map(([option, name]) => (
+          <button
+            key={option}
+            type="button"
+            role="radio"
+            aria-checked={value === option}
+            className={[styles.segment, value === option ? styles.segmentOn : ''].join(' ')}
+            onClick={() => onChange(option)}
+          >
+            {name}
+          </button>
+        ))}
+      </span>
+    </div>
   );
 }
 
@@ -126,11 +161,19 @@ function Report({ world, result }: { world: World; result: SolveResult | null })
 
   // What the plan turns out — its sinks and any output left unconnected —
   // for a side-by-side with what the build actually delivers.
+  // A sink given its own target — "Build this" sets one — speaks for its
+  // item instead.
   const planned = new Map<string, number>(
     result?.status === 'ok'
       ? Object.entries(result.totals.outputs).filter(([, perSec]) => perSec > 0)
       : [],
   );
+  const targets = new Map<string, number>();
+  for (const sink of world.sinks) {
+    const target = sink.entity.target;
+    if (target) targets.set(target.itemId, (targets.get(target.itemId) ?? 0) + target.perSec);
+  }
+  for (const [itemId, perSec] of targets) planned.set(itemId, perSec);
 
   const machines = new Map<string, { count: number; working: number }>();
   for (const machine of world.machines) {
@@ -277,6 +320,102 @@ function EntitySections({
         </section>
       );
     }
+    case 'underground': {
+      const underground = world.undergrounds[reference.index]!;
+      const { entity } = underground;
+      const reach = undergroundReach(entity.beltId);
+      return (
+        <section className={styles.section}>
+          <PickerRow
+            label="Tier"
+            value={entity.beltId}
+            options={index.data.belts}
+            placeholder="Belt"
+            onChange={(beltId) => update(entity.id, { beltId })}
+          />
+          <Segmented
+            label="End"
+            value={entity.io}
+            options={[
+              ['in', 'Entrance'],
+              ['out', 'Exit'],
+            ]}
+            onChange={(io) => update(entity.id, { io })}
+          />
+          <Row label="Paired">
+            {underground.partner === null ? (
+              <span className={styles.valueWarn}>
+                {entity.io === 'in' ? `No exit within ${reach} tiles` : 'No entrance behind it'}
+              </span>
+            ) : (
+              <span className="mono">{`${underground.span} tiles ${entity.io === 'in' ? 'ahead' : 'back'}`}</span>
+            )}
+          </Row>
+          <p className={styles.hint}>Reaches {reach} tiles at this tier.</p>
+        </section>
+      );
+    }
+    case 'splitter': {
+      const { entity } = world.splitters[reference.index]!;
+      const sides: [('left' | 'right' | 'none'), string][] = [
+        ['none', 'None'],
+        ['left', 'Left'],
+        ['right', 'Right'],
+      ];
+      const filterItem = entity.filter ? index.items.get(entity.filter) : undefined;
+      return (
+        <section className={styles.section}>
+          <PickerRow
+            label="Tier"
+            value={entity.beltId}
+            options={index.data.belts}
+            placeholder="Belt"
+            onChange={(beltId) => update(entity.id, { beltId })}
+          />
+          <Segmented
+            label="Input priority"
+            value={entity.inputPriority ?? 'none'}
+            options={sides}
+            onChange={(side) => update(entity.id, { inputPriority: side === 'none' ? null : side })}
+          />
+          <Segmented
+            label="Output priority"
+            value={entity.outputPriority ?? 'none'}
+            options={sides}
+            onChange={(side) =>
+              update(entity.id, {
+                outputPriority: side === 'none' ? null : side,
+                // A filter means nothing without a side to send it to.
+                ...(side === 'none' ? { filter: null } : {}),
+              })
+            }
+          />
+          {entity.outputPriority ? (
+            <div className={styles.row}>
+              <span className={styles.label}>Filter</span>
+              <button
+                type="button"
+                className={styles.picker}
+                onClick={() => onPick(entity.id, 'build-item', 'filter')}
+              >
+                {filterItem ? <Sprite icon={filterItem.icon} size={16} /> : null}
+                <span className={styles.pickerName}>{filterItem?.name ?? 'Any item'}</span>
+              </button>
+              {entity.filter ? (
+                <button type="button" className={styles.remove} onClick={() => update(entity.id, { filter: null })}>
+                  Clear
+                </button>
+              ) : null}
+            </div>
+          ) : null}
+          <p className={styles.hint}>
+            {entity.filter
+              ? `${filterItem?.name ?? 'The filtered item'} goes out on the ${entity.outputPriority} side, everything else on the other.`
+              : 'Left and right as seen looking the way items travel.'}
+          </p>
+        </section>
+      );
+    }
     case 'source': {
       const source = world.sources[reference.index]!;
       const item = index.items.get(source.entity.itemId);
@@ -308,8 +447,26 @@ function EntitySections({
     }
     case 'sink': {
       const sink = world.sinks[reference.index]!;
+      // A target is for one item: the one it was set for, else whatever this
+      // sink has received the most of.
+      const targetItem =
+        sink.entity.target?.itemId ??
+        [...sink.totals.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ??
+        null;
       return (
         <section className={styles.section}>
+          {targetItem ? (
+            <NumberField
+              label={`Target, ${index.items.get(targetItem)?.name.toLowerCase() ?? targetItem}`}
+              value={sink.entity.target?.perSec ?? 0}
+              min={0}
+              onCommit={(value) =>
+                update(sink.entity.id, {
+                  target: value > 0 ? { itemId: targetItem, perSec: value } : null,
+                })
+              }
+            />
+          ) : null}
           {sink.meters.size === 0 ? (
             <p className={styles.hint}>Nothing has arrived. Run a belt into it or point an inserter at it.</p>
           ) : (

@@ -121,7 +121,7 @@ export function BuildCanvas({
         return cached.ghost;
       }
       let entities = null;
-      if (isPlacing(current)) entities = [entityFor(current, hover, facing, 'ghost')];
+      if (isPlacing(current)) entities = [entityFor(current, hover, facing, layout, 'ghost')];
       else if (current.kind === 'paste') entities = pasteAt(current.stamp, hover);
       const ghost = entities
         ? { entities, valid: placeEntities(layout, entities).placed.every((id) => id !== null) }
@@ -197,6 +197,8 @@ export function BuildCanvas({
     const placeAt = (tile: Tile, gesture: Extract<Gesture, { kind: 'place' }>, first: boolean): void => {
       const current = live.current.tool;
       if (!isPlacing(current)) return;
+      // Undergrounds and splitters go down one per click, as in the game.
+      if (!first && (current.kind === 'underground' || current.kind === 'splitter')) return;
       let facing = live.current.dir;
       if (!first && current.kind === 'belt') {
         const moved = dirBetween(gesture.last, tile);
@@ -206,7 +208,7 @@ export function BuildCanvas({
           if (moved !== live.current.dir) live.current.onDirChange(moved);
         }
       }
-      const [placed] = store().placeEntities([entityFor(current, tile, facing)]);
+      const [placed] = store().placeEntities([entityFor(current, tile, facing, store().build)]);
       if (first && placed === null) live.current.onRefused();
       gesture.last = tile;
       gesture.lastBelt = current.kind === 'belt' ? (placed ?? null) : null;

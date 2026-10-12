@@ -9,11 +9,18 @@
  */
 import type { GameIndex } from '../data/loader.ts';
 import type { IconRef } from '../data/schema.ts';
-import { INSERTER_SPECS, LANE_LENGTH, entityFootprint } from './entities.ts';
+import {
+  INSERTER_SPECS,
+  LANE_LENGTH,
+  entityFootprint,
+  splitterHalves,
+  splitterItem,
+  undergroundItem,
+} from './entities.ts';
 import { leftOf, rightOf, type BuildEntity, type Dir } from './types.ts';
 import { armPosition } from '../sim/step.ts';
 import { meterRate } from '../sim/meter.ts';
-import type { World } from '../sim/world.ts';
+import { refEntity, type World } from '../sim/world.ts';
 
 /** Tile edge at zoom 1, CSS px. */
 export const TILE = 32;
@@ -103,6 +110,12 @@ export function draw(ctx: CanvasRenderingContext2D, scene: Scene): void {
 
   const { world } = scene;
   for (const belt of world.belts) if (visible(belt.entity)) drawBelt(ctx, scene, belt.entity, belt.entry, t);
+  for (const underground of world.undergrounds) {
+    if (visible(underground.entity)) drawUnderground(ctx, scene, underground, t);
+  }
+  for (const splitter of world.splitters) {
+    if (visible(splitter.entity)) drawSplitter(ctx, scene, splitter, t);
+  }
   for (const source of world.sources) if (visible(source.entity)) drawSource(ctx, scene, source.entity, t);
   for (const sink of world.sinks) if (visible(sink.entity)) drawSink(ctx, scene, sink.entity, t);
   for (const chest of world.chests) if (visible(chest.entity)) drawChest(ctx, scene, chest.entity, t);
@@ -113,6 +126,31 @@ export function draw(ctx: CanvasRenderingContext2D, scene: Scene): void {
     for (const belt of world.belts) {
       if (visible(belt.entity)) drawLaneItems(ctx, scene, belt.entity, belt.entry, belt.lanes, t);
     }
+    for (const underground of world.undergrounds) {
+      if (!visible(underground.entity)) continue;
+      const { entity, partner } = underground;
+      // Only the open half shows: an entrance's back half, an exit's front.
+      const shown =
+        partner === null
+          ? undefined
+          : entity.io === 'in'
+            ? (pos: number) => pos < LANE_LENGTH / 2
+            : (pos: number) => pos >= LANE_LENGTH / 2;
+      drawLaneItems(ctx, scene, entity, entity.dir, underground.lanes, t, { shown });
+    }
+    for (const splitter of world.splitters) {
+      if (!visible(splitter.entity)) continue;
+      // Both lanes share one tile: inputs show up to the bar, outputs after it.
+      for (const half of splitter.halves) {
+        const tile = { ...half.tile, dir: splitter.entity.dir };
+        drawLaneItems(ctx, scene, tile, tile.dir, half.input, t, { shown: (pos) => pos < LANE_LENGTH / 2 });
+        drawLaneItems(ctx, scene, tile, tile.dir, half.output, t, { shown: (pos) => pos >= LANE_LENGTH / 2 });
+      }
+    }
+  }
+  // The splitter's body sits over its items, the way the game draws it.
+  for (const splitter of world.splitters) {
+    if (visible(splitter.entity)) drawSplitterBody(ctx, scene, splitter, t);
   }
   for (const inserter of world.inserters) {
     if (visible(inserter.entity)) drawInserter(ctx, scene, inserter, t);
@@ -121,9 +159,26 @@ export function draw(ctx: CanvasRenderingContext2D, scene: Scene): void {
   for (const id of scene.selection) {
     const ref = world.byId.get(id);
     if (!ref) continue;
-    const entity = entityOf(world, ref);
+    const entity = refEntity(world, ref);
     const { w, h } = entityFootprint(entity);
     outline(ctx, scene, entity.x, entity.y, w, h, palette.copper, 2, t);
+    // A selected underground shows where its other end is.
+    if (ref.kind === 'underground') {
+      const partner = world.undergrounds[ref.index]!.partner;
+      if (partner !== null) {
+        const other = world.undergrounds[partner]!.entity;
+        ctx.save();
+        ctx.setLineDash([4, 4]);
+        ctx.strokeStyle = palette.copper;
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(view.x + (entity.x + 0.5) * t, view.y + (entity.y + 0.5) * t);
+        ctx.lineTo(view.x + (other.x + 0.5) * t, view.y + (other.y + 0.5) * t);
+        ctx.stroke();
+        ctx.restore();
+        outline(ctx, scene, other.x, other.y, 1, 1, palette.copper, 1, t);
+      }
+    }
   }
 
   if (scene.ghost) drawGhost(ctx, scene, scene.ghost, t);
@@ -140,23 +195,6 @@ export function draw(ctx: CanvasRenderingContext2D, scene: Scene): void {
     ctx.fillRect(view.x + bx * t, view.y + by * t, bw * t, bh * t);
     ctx.restore();
     outline(ctx, scene, bx, by, bw, bh, palette.copper, 1, t);
-  }
-}
-
-function entityOf(world: World, ref: { kind: string; index: number }): BuildEntity {
-  switch (ref.kind) {
-    case 'belt':
-      return world.belts[ref.index]!.entity;
-    case 'source':
-      return world.sources[ref.index]!.entity;
-    case 'machine':
-      return world.machines[ref.index]!.entity;
-    case 'inserter':
-      return world.inserters[ref.index]!.entity;
-    case 'chest':
-      return world.chests[ref.index]!.entity;
-    default:
-      return world.sinks[ref.index]!.entity;
   }
 }
 
@@ -353,16 +391,152 @@ function drawLaneItems(
   entry: Dir,
   lanes: [number, number],
   t: number,
+  options: {
+    /** Only items this accepts are drawn; the rest are hidden by something. */
+    shown?: (pos: number) => boolean;
+  } = {},
 ): void {
   const size = t * 0.36;
   const [x, y] = tileRect(scene, tile.x, tile.y, t);
   for (let lane = 0; lane < 2; lane += 1) {
     for (const item of scene.world.lanes[lanes[lane]!]!.items) {
+      if (item.pos > LANE_LENGTH) continue;
+      if (options.shown && !options.shown(item.pos)) continue;
       const icon = scene.index.items.get(item.itemId)?.icon;
       if (!icon) continue;
       // Side-loaded items land mid-tile and run straight from there.
       const p = lanePoint(entry, tile.dir, lane as 0 | 1, item.pos);
       sprite(ctx, scene, icon, x + p.x * t, y + p.y * t, size);
+    }
+  }
+}
+
+/** A straight belt tile's body and rails, shared by undergrounds and splitters. */
+function beltBody(ctx: CanvasRenderingContext2D, scene: Scene, tileX: number, tileY: number, dir: Dir, t: number): void {
+  const { palette } = scene;
+  const [x, y] = tileRect(scene, tileX, tileY, t);
+  ctx.fillStyle = palette.panel;
+  ctx.fillRect(x + 1, y + 1, t - 2, t - 2);
+  ctx.strokeStyle = palette.line;
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  if (dir % 2 === 0) {
+    ctx.moveTo(x + 1.5, y);
+    ctx.lineTo(x + 1.5, y + t);
+    ctx.moveTo(x + t - 1.5, y);
+    ctx.lineTo(x + t - 1.5, y + t);
+  } else {
+    ctx.moveTo(x, y + 1.5);
+    ctx.lineTo(x + t, y + 1.5);
+    ctx.moveTo(x, y + t - 1.5);
+    ctx.lineTo(x + t, y + t - 1.5);
+  }
+  ctx.stroke();
+}
+
+function drawUnderground(
+  ctx: CanvasRenderingContext2D,
+  scene: Scene,
+  underground: World['undergrounds'][number],
+  t: number,
+): void {
+  const { palette } = scene;
+  const { entity, partner } = underground;
+  beltBody(ctx, scene, entity.x, entity.y, entity.dir, t);
+  const [x, y] = tileRect(scene, entity.x, entity.y, t);
+  // The hood covers the half that is under the ground: an entrance's front,
+  // an exit's back. An end with no partner is a broken line, so its hood
+  // edge is drawn in --warn.
+  const hoodTowards: Dir = entity.io === 'in' ? entity.dir : ((entity.dir + 2) % 4) as Dir;
+  const hx = hoodTowards === 1 ? x + t / 2 : x + 1;
+  const hy = hoodTowards === 2 ? y + t / 2 : y + 1;
+  const hw = hoodTowards % 2 === 1 ? t / 2 - 1 : t - 2;
+  const hh = hoodTowards % 2 === 0 ? t / 2 - 1 : t - 2;
+  ctx.fillStyle = palette.raised;
+  ctx.fillRect(hx, hy, hw, hh);
+  ctx.strokeStyle = partner === null ? palette.warn : palette.line;
+  ctx.lineWidth = partner === null ? 1.5 : 1;
+  ctx.strokeRect(hx + 0.5, hy + 0.5, hw - 1, hh - 1);
+  const icon = scene.index.items.get(undergroundItem(entity.beltId))?.icon;
+  if (icon && t >= 16) sprite(ctx, scene, icon, hx + hw / 2, hy + hh / 2, Math.min(hw, hh) * 0.8);
+  if (t >= 14) {
+    const open = entity.io === 'in' ? -0.22 : 0.22;
+    chevron(ctx, x + t / 2 + VX[entity.dir] * t * open, y + t / 2 + VY[entity.dir] * t * open, entity.dir, t * 0.2, palette.line);
+  }
+}
+
+function drawSplitter(
+  ctx: CanvasRenderingContext2D,
+  scene: Scene,
+  splitter: World['splitters'][number],
+  t: number,
+): void {
+  const { palette } = scene;
+  const { entity } = splitter;
+  for (const half of splitterHalves(entity)) {
+    beltBody(ctx, scene, half.x, half.y, entity.dir, t);
+    if (t >= 14) {
+      const [x, y] = tileRect(scene, half.x, half.y, t);
+      chevron(ctx, x + t / 2 + VX[entity.dir] * t * 0.3, y + t / 2 + VY[entity.dir] * t * 0.3, entity.dir, t * 0.18, palette.line);
+    }
+  }
+}
+
+function drawSplitterBody(
+  ctx: CanvasRenderingContext2D,
+  scene: Scene,
+  splitter: World['splitters'][number],
+  t: number,
+): void {
+  const { palette, view } = scene;
+  const { entity } = splitter;
+  const halves = splitterHalves(entity);
+  // A bar across both halves at the middle of the tile, with the splitter's
+  // own sprite on it so it reads as one machine and not two belts.
+  const { w, h } = entityFootprint(entity);
+  const bx = view.x + entity.x * t;
+  const by = view.y + entity.y * t;
+  const thick = Math.max(4, t * 0.24);
+  ctx.fillStyle = palette.raised;
+  ctx.strokeStyle = palette.muted;
+  ctx.lineWidth = 1;
+  if (entity.dir % 2 === 0) {
+    ctx.fillRect(bx + 2, by + t / 2 - thick / 2, w * t - 4, thick);
+    ctx.strokeRect(bx + 2.5, by + t / 2 - thick / 2 + 0.5, w * t - 5, thick - 1);
+  } else {
+    ctx.fillRect(bx + t / 2 - thick / 2, by + 2, thick, h * t - 4);
+    ctx.strokeRect(bx + t / 2 - thick / 2 + 0.5, by + 2.5, thick - 1, h * t - 5);
+  }
+  const icon = scene.index.items.get(splitterItem(entity.beltId))?.icon;
+  if (icon && t >= 16) sprite(ctx, scene, icon, bx + (w * t) / 2, by + (h * t) / 2, t * 0.5);
+  // Priorities are a mark at the back (input) or front (output) of the
+  // favoured half; a filter shows its item there.
+  const mark = (side: 'left' | 'right', towards: number): { x: number; y: number } => {
+    const half = halves[side === 'left' ? 0 : 1];
+    return {
+      x: view.x + (half.x + 0.5 + VX[entity.dir] * towards) * t,
+      y: view.y + (half.y + 0.5 + VY[entity.dir] * towards) * t,
+    };
+  };
+  ctx.fillStyle = palette.ink;
+  if (entity.inputPriority) {
+    const p = mark(entity.inputPriority, -0.36);
+    ctx.fillRect(p.x - 2, p.y - 2, 4, 4);
+  }
+  if (entity.outputPriority) {
+    const p = mark(entity.outputPriority, 0.36);
+    ctx.fillRect(p.x - 2, p.y - 2, 4, 4);
+    // A filter sits on the bar in a framed square, so it cannot be mistaken
+    // for an item on the belt.
+    const filterIcon = entity.filter ? scene.index.items.get(entity.filter)?.icon : undefined;
+    if (filterIcon) {
+      const f = mark(entity.outputPriority, 0);
+      const box = t * 0.42;
+      ctx.fillStyle = palette.raised;
+      ctx.fillRect(f.x - box / 2, f.y - box / 2, box, box);
+      ctx.strokeStyle = palette.muted;
+      ctx.strokeRect(f.x - box / 2 + 0.5, f.y - box / 2 + 0.5, box - 1, box - 1);
+      sprite(ctx, scene, filterIcon, f.x, f.y, box * 0.8);
     }
   }
 }
@@ -535,7 +709,16 @@ function drawGhost(ctx: CanvasRenderingContext2D, scene: Scene, ghost: Ghost, t:
     } else if (entity.kind === 'source') icon = scene.index.items.get(entity.itemId)?.icon;
     else if (entity.kind === 'inserter') icon = scene.index.items.get(entity.inserterId)?.icon;
     else if (entity.kind === 'chest') icon = scene.index.items.get('steel-chest')?.icon;
+    else if (entity.kind === 'underground') icon = scene.index.items.get(undergroundItem(entity.beltId))?.icon;
+    else if (entity.kind === 'splitter') icon = scene.index.items.get(splitterItem(entity.beltId))?.icon;
     if (icon) sprite(ctx, scene, icon, x + (w * t) / 2, y + (h * t) / 2, Math.min(w, h) * t * 0.5);
+    if (entity.kind === 'underground' && t >= 12) {
+      // Says which end this will be before it is placed.
+      ctx.fillStyle = palette.ink;
+      ctx.font = `${Math.round(t * 0.28)}px ${getComputedStyle(document.body).fontFamily}`;
+      ctx.textAlign = 'center';
+      ctx.fillText(entity.io === 'in' ? 'in' : 'out', x + t / 2, y + t - 3);
+    }
     if (entity.kind !== 'machine' && entity.kind !== 'chest' && entity.kind !== 'sink') {
       chevron(
         ctx,
