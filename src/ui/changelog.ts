@@ -40,6 +40,29 @@ export const CHANGELOG: readonly ChangelogEntry[] = [
       'Keys follow the game: R rotates, Q picks up the tool for what is under the pointer, right-click removes. Press ? for the rest.',
     ],
   },
+  {
+    id: '2026-10-10-tidier-connections',
+    date: '10 Oct 2026',
+    title: 'Tidier connections and layout',
+    items: [
+      'One output feeding several inputs is drawn as one line that branches, with each rate next to the machine it feeds. The same goes for several outputs feeding one input.',
+      'Connections no longer run along the same line, and rate labels move clear of each other and of nodes.',
+      'Tidy up (Ctrl L) lines up ports rather than node centres, so most connections run straight.',
+    ],
+  },
+  {
+    id: '2026-10-10-fewer-clicks',
+    date: '10 Oct 2026',
+    title: 'Fewer clicks when planning',
+    items: [
+      'The bar at the top left sets the belt new connections start on, the machines new nodes use, /s or /min, and which items come from the bus. Changing the belt or a machine there moves everything that was following it.',
+      'Select a node and press E to build what feeds its open inputs. Press E again to go one step further back. It stops at bus items, and asks when an item has more than one sensible recipe.',
+      'Shift Enter in the search adds the item as a sink, ready for you to type its rate. Nodes already on the canvas come first in the search, and recycling comes last.',
+      'With connections selected, 1 to 4 set the belt and 0 removes it. With machines selected, 1 to 3 set the tier.',
+      'Double-click a machine count or a rate to type it in place. Click a rate label to select its connection.',
+      'The strip along the bottom shows the keys for whatever is selected.',
+    ],
+  },
 ];
 
 /** Entries newer than the last one seen, newest first. All of them if none was. */
